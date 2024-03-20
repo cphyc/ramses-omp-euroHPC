@@ -583,7 +583,7 @@ subroutine make_virtual_reverse_dp(xx,ilevel)
 
  ! Gather emission array
 !$omp parallel private(iskip,step,icell,ibuf)
-!$omp do collapse(2) schedule(dynamic)
+!$omp do collapse(2) schedule(static)
   do j=1,twotondim
      do icpu=1,ncpu
         if (reception(icpu,ilevel)%ngrid>0) then

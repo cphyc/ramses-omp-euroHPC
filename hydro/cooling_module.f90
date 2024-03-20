@@ -1812,7 +1812,7 @@ subroutine iterate(i_n,t_rad_spec,h_rad_spec,nbin_T,aexp)
   nH=10d0**table%nH(i_n)
 !$omp parallel do private(T2,cool_tot,heat_tot,cool_com,heat_com,mu,n_spec, &
 !$omp & T2_eps,cool_tot_eps,heat_tot_eps,cool_com_eps,heat_com_eps,mu_eps,n_spec_eps, &
-!$omp & metal_tot,metal_prime) schedule(dynamic)
+!$omp & metal_tot,metal_prime) schedule(static)
   do i_T = 1,nbin_T
      T2=10d0**table%T2(i_T)
      ! Compute cooling, heating and mean molecular weight
