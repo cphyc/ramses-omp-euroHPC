@@ -1460,7 +1460,7 @@ subroutine get_number_of_snIa (birth_time, dteff, id_star, mass0, nsnIa )
 !-------------------------------------------------------------
   real(dp)::A_DTD,t_ini,t_fin,xdum,ydum,age1,age2
   integer ::localseed,i,nsnIa_tot
-  real(dp),external::ran1_ts
+  real(dp),external::ran1
 
 
 !  DTD = A_DTD* t^-1
