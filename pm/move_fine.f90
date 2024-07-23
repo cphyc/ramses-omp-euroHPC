@@ -25,16 +25,16 @@ subroutine move_fine(ilevel)
   !OMP
   real(dp), dimension(1:nsinkmax,1:ndim*2+1) :: sink_stat_local
   integer, dimension(1:IRandNumSize), save :: ompseed
-!$omp threadprivate(ompseed)
+!!$$omp threadprivate(ompseed)
 
   if(numbtot(1,ilevel)==0)return
   if(verbose)write(*,111)ilevel
 
 #ifdef _OPENMP
-!$omp parallel
+!!$$omp parallel
     ! Give slight offsets for each OMP threads
     ompseed=MOD(tracer_seed+omp_get_thread_num()+1,4096)
-!$omp end parallel
+!!$$omp end parallel
 #else
     ompseed=MOD(tracer_seed+1,4096)
 #endif
@@ -42,7 +42,7 @@ subroutine move_fine(ilevel)
 
   ! Set new sink variables to old ones
   if(sink)then
-!$omp parallel do private(isink)
+!!$$omp parallel do private(isink)
      do isink=1,nsinkmax
         vsink_new(isink,:)=0d0
         oksink_new(isink)=0d0
@@ -51,10 +51,10 @@ subroutine move_fine(ilevel)
      end do
   endif
 
-!$omp parallel private(ig,ip,ind_grid,ind_part,ind_grid_part,igrid,npart1,ipart,local_counter,next_part) reduction(+:sink_stat_local)
+!!$$omp parallel private(ig,ip,ind_grid,ind_part,ind_grid_part,igrid,npart1,ipart,local_counter,next_part) reduction(+:sink_stat_local)
   ig=0
   ip=0
-!$omp do schedule(dynamic,nchunk)
+!!$$omp do schedule(dynamic,nchunk)
   do jgrid=1,active(ilevel)%ngrid
      igrid=active(ilevel)%igrid(jgrid)
      npart1=numbp(igrid)  ! Number of particles in the grid
@@ -97,10 +97,10 @@ subroutine move_fine(ilevel)
         end if
      end if
   end do
-!$omp end do nowait
+!!$$omp end do nowait
   ! End loop over grids
   if(ip>0)call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel,sink_stat_local)
-!$omp end parallel
+!!$$omp end parallel
 
   !--------------------------------------------------------------------------------
   ! Moving sinks
@@ -115,7 +115,7 @@ subroutine move_fine(ilevel)
         vsink_all=vsink_new
 #endif
      endif
-!$omp parallel do private(isink)
+!!$$omp parallel do private(isink)
      do isink=1,nsink
         if(oksink_all(isink)==1d0.and.(.not.fix_smbh_position))then
            vsink(isink,1:ndim)=vsink_all(isink,1:ndim)
@@ -129,10 +129,10 @@ subroutine move_fine(ilevel)
   ! Moving tracers
   !--------------------------------------------------------------------------------
   if (MC_tracer) then  ! Loop over grids for MC tracers
-!$omp parallel private(ip,ig,ind_grid,ind_part,ind_grid_part)
+!!$$omp parallel private(ip,ig,ind_grid,ind_part,ind_grid_part)
      ig=0
      ip=0
-!$omp do private(igrid,npart1,ipart,next_part,local_counter,part_type) schedule(static)
+!!$$omp do private(igrid,npart1,ipart,next_part,local_counter,part_type) schedule(static)
      do jgrid=1,active(ilevel)%ngrid
         igrid=active(ilevel)%igrid(jgrid)
         npart1=numbp(igrid)  ! Number of particles in the grid
@@ -181,9 +181,9 @@ subroutine move_fine(ilevel)
               end if
            end if
      end do
-!$omp end do nowait
+!!$$omp end do nowait
      if(ip>0) call move_gas_tracer(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel,ompseed) ! MC Tracer
-!$omp end parallel
+!!$$omp end parallel
   end if
 
 111 format('   Entering move_fine for level ',I2)

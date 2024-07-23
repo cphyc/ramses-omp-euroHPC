@@ -84,9 +84,9 @@ subroutine newdt_fine(ilevel)
      ! Compute maximum time step on active region
      if(numbl(myid,ilevel)>0)then
         ! Loop over grids
-!$omp parallel private(ip,ind_part,igrid,npart1,ipart,ok) reduction(MIN:dt_loc) reduction(+:ekin_loc)
+!!$$omp parallel private(ip,ind_part,igrid,npart1,ipart,ok) reduction(MIN:dt_loc) reduction(+:ekin_loc)
         ip=0
-!$omp do
+!!$$omp do
         do jgrid=1,numbl(myid,ilevel)
            igrid=active(ilevel)%igrid(jgrid)
            npart1=numbp(igrid)   ! Number of particles in the grid
@@ -116,10 +116,10 @@ subroutine newdt_fine(ilevel)
               ! End loop over particles
            end if
         end do
-!$omp end do nowait
+!!$$omp end do nowait
         ! End loop over grids
         if(ip>0)call newdt2(ind_part,dt_loc,ekin_loc,ip,ilevel)
-!$omp end parallel
+!!$$omp end parallel
      end if
 
      ! Minimize time step over all cpus
