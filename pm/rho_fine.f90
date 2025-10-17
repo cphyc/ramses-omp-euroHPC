@@ -8,9 +8,6 @@ subroutine rho_fine(ilevel,icount)
   use hydro_commons
   use poisson_commons
   use cooling_module
-#ifdef DICE
-  use dice_commons
-#endif
   use mpi_mod
   implicit none
 #ifndef WITHOUTMPI
@@ -30,7 +27,7 @@ subroutine rho_fine(ilevel,icount)
   !   number density criterion (quasi Lagrangian mesh).
   !------------------------------------------------------------------
   integer::iskip,icpu,ind,i,nx_loc,ibound
-  real(dp)::dx,d_scale,scale,dx_loc,scalar,aoff
+  real(dp)::dx,d_scale,scale,dx_loc,scalar
 
   if(.not. poisson)return
   if(numbtot(1,ilevel)==0)return
@@ -46,121 +43,98 @@ subroutine rho_fine(ilevel,icount)
   !-------------------------------------------------------
   ! Initialize rho to analytical and baryon density field
   !-------------------------------------------------------
-#ifdef DICE
-  if(dice_init.and.amr_struct) then
-    if(hydro)call multipole_from_current_level(ilevel)
-    call cic_from_multipole(ilevel)
-    ! Update boundaries
-    call make_virtual_reverse_dp(rho(1),ilevel)
-    call make_virtual_fine_dp   (rho(1),ilevel)
- else
-#endif
-    if(ilevel==levelmin.or.icount>1)then
-       do i=nlevelmax,ilevel,-1
-          ! Compute mass multipole
-          if(hydro)call multipole_fine(i)
-          ! Perform TSC using pseudo-particle
+  if(ilevel==levelmin.or.icount>1)then
+     do i=nlevelmax,ilevel,-1
+        ! Compute mass multipole
+        if(hydro)call multipole_fine(i)
+        ! Perform TSC using pseudo-particle
 #ifdef TSC
-          if (ndim==3)then
-             call tsc_from_multipole(i)
-          else
-             write(*,*)'TSC not supported for ndim neq 3'
-             call clean_stop
-          end if
+        if (ndim==3)then
+           call tsc_from_multipole(i)
+        else
+           write(*,*)'TSC not supported for ndim neq 3'
+           call clean_stop
+        end if
 #else
-          ! Perform CIC using pseudo-particle
-          call cic_from_multipole(i)
+        ! Perform CIC using pseudo-particle
+        call cic_from_multipole(i)
 #endif
-          ! Update boundaries
-          call make_virtual_reverse_dp(rho(1),i)
-          call make_virtual_fine_dp   (rho(1),i)
-       end do
-    end if
-#ifdef DICE
- endif
-#endif
+        ! Update boundaries
+        call make_virtual_reverse_dp(rho(1),i)
+        call make_virtual_fine_dp   (rho(1),i)
+     end do
+  end if
+
   !--------------------------
   ! Initialize fields to zero
   !--------------------------
-!$omp parallel do private(iskip)
   do ind=1,twotondim
-    iskip=ncoarse+(ind-1)*ngridmax
-    do i=1,active(ilevel)%ngrid
-       phi(active(ilevel)%igrid(i)+iskip)=0.0D0
-       if(ilevel==cic_levelmax)then
-          rho_top(active(ilevel)%igrid(i)+iskip)=0.0D0
-       endif
-    end do
+     iskip=ncoarse+(ind-1)*ngridmax
+     do i=1,active(ilevel)%ngrid
+        phi(active(ilevel)%igrid(i)+iskip)=0.0D0
+     end do
+     if(ilevel==cic_levelmax)then
+        do i=1,active(ilevel)%ngrid
+           rho_top(active(ilevel)%igrid(i)+iskip)=0.0D0
+        end do
+     endif
   end do
-
-!$omp parallel private(d_scale,iskip)
   if(cic_levelmax>0.and.ilevel>cic_levelmax)then
      do ind=1,twotondim
         iskip=ncoarse+(ind-1)*ngridmax
-!$omp do
         do i=1,active(ilevel)%ngrid
            rho_top(active(ilevel)%igrid(i)+iskip)=rho_top(father(active(ilevel)%igrid(i)))
            rho(active(ilevel)%igrid(i)+iskip)=rho(active(ilevel)%igrid(i)+iskip)+ &
                 & rho_top(active(ilevel)%igrid(i)+iskip)
         end do
-!$omp end do nowait
      end do
   endif
-!$omp barrier
+
   !-------------------------------------------------------------------------
   ! Initialize "number density" field to baryon number density in array phi.
   !-------------------------------------------------------------------------
-  if(hydro .and. m_refine(ilevel)>-1.0d0)then
+  if(m_refine(ilevel)>-1.0d0)then
      d_scale=max(mass_sph/dx_loc**ndim,smallr)
-     if(ivar_refine>0)then
-        do ind=1,twotondim
-           iskip=ncoarse+(ind-1)*ngridmax
-!$omp do private(scalar)
-           do i=1,active(ilevel)%ngrid
-              scalar=uold(active(ilevel)%igrid(i)+iskip,ivar_refine) &
-                   & /max(uold(active(ilevel)%igrid(i)+iskip,1),smallr)
-              if(scalar>var_cut_refine)then
+     do ind=1,twotondim
+        iskip=ncoarse+(ind-1)*ngridmax
+        if(hydro)then
+           if(ivar_refine>0)then
+              do i=1,active(ilevel)%ngrid
+                 scalar=uold(active(ilevel)%igrid(i)+iskip,ivar_refine) &
+                      & /max(uold(active(ilevel)%igrid(i)+iskip,1),smallr)
+                 if(scalar>var_cut_refine)then
+                    phi(active(ilevel)%igrid(i)+iskip)= &
+                         & rho(active(ilevel)%igrid(i)+iskip)/d_scale
+                 endif
+              end do
+           else
+              do i=1,active(ilevel)%ngrid
                  phi(active(ilevel)%igrid(i)+iskip)= &
                       & rho(active(ilevel)%igrid(i)+iskip)/d_scale
-              endif
-           end do
-!$omp end do nowait
-        end do
-     else
-        do ind=1,twotondim
-           iskip=ncoarse+(ind-1)*ngridmax
-!$omp do
-           do i=1,active(ilevel)%ngrid
-              phi(active(ilevel)%igrid(i)+iskip)= &
-                   & rho(active(ilevel)%igrid(i)+iskip)/d_scale
-           end do
-!$omp end do nowait
-        end do
-     endif
+              end do
+           endif
+        endif
+     end do
   endif
-!$omp barrier
+
   !-------------------------------------------------------
   ! Initialize rho and phi to zero in virtual boundaries
   !-------------------------------------------------------
-  do ind=1,twotondim
-     iskip=ncoarse+(ind-1)*ngridmax
-     do icpu=1,ncpu
-!$omp do
+  do icpu=1,ncpu
+     do ind=1,twotondim
+        iskip=ncoarse+(ind-1)*ngridmax
         do i=1,reception(icpu,ilevel)%ngrid
            rho(reception(icpu,ilevel)%igrid(i)+iskip)=0.0D0
            phi(reception(icpu,ilevel)%igrid(i)+iskip)=0.0D0
         end do
-!$omp end do nowait
         if(ilevel==cic_levelmax)then
-!$omp do
            do i=1,reception(icpu,ilevel)%ngrid
               rho_top(reception(icpu,ilevel)%igrid(i)+iskip)=0.0D0
            end do
-!$omp end do nowait
         endif
      end do
   end do
-!$omp end parallel
+
   !---------------------------------------------------------
   ! Compute particle contribution to density field
   !---------------------------------------------------------
@@ -169,7 +143,6 @@ subroutine rho_fine(ilevel,icount)
      call rho_from_current_level(ilevel)
   end if
   ! Update boudaries
-  ! Main bottleneck
   call make_virtual_reverse_dp(rho(1),ilevel)
   call make_virtual_fine_dp   (rho(1),ilevel)
   if(ilevel==cic_levelmax)then
@@ -207,37 +180,18 @@ subroutine rho_fine(ilevel,icount)
      do ind=1,twotondim
         iskip=ncoarse+(ind-1)*ngridmax
         do i=1,boundary(ibound,ilevel)%ngrid
-           phi(boundary(ibound,ilevel)%igrid(i)+iskip)=0.0
-           rho(boundary(ibound,ilevel)%igrid(i)+iskip)=0.0
+           phi(boundary(ibound,ilevel)%igrid(i)+iskip)=0
+           rho(boundary(ibound,ilevel)%igrid(i)+iskip)=0
         end do
      end do
   end do
-
-  if(trans_smooth>0)then
-     if(ilevel<=(nlevelmax_part+nlevel_collapse-1))then
-        m_refine=8d0
-     else
-        aoff = (aexp-aexp_trans(ilevel+1))/trans_smooth
-        if(aoff<=-1.) then ! refinement not started yet
-           m_refine(ilevel)=1d20
-           ! prevent_refine=.true.
-        elseif(aoff<1.) then ! ongoing transition
-           !m_refine=8d0
-           m_refine(ilevel)=100d0-(SIN(aoff*twopi/4.)/2.+0.5)*92.
-        else ! refinement finished
-           m_refine(ilevel)=8d0
-        end if
-     end if
-  end if
 
   !-----------------------------------------
   ! Compute quasi Lagrangian refinement map
   !-----------------------------------------
   if(m_refine(ilevel)>-1.0d0)then
-!$omp parallel private(iskip)
      do ind=1,twotondim
         iskip=ncoarse+(ind-1)*ngridmax
-!$omp do
         do i=1,active(ilevel)%ngrid
            if(phi(active(ilevel)%igrid(i)+iskip)>=m_refine(ilevel))then
               cpu_map2(active(ilevel)%igrid(i)+iskip)=1
@@ -245,12 +199,18 @@ subroutine rho_fine(ilevel,icount)
               cpu_map2(active(ilevel)%igrid(i)+iskip)=0
            end if
         end do
-!$omp end do nowait
      end do
-!$omp end parallel
      ! Update boundaries
      call make_virtual_fine_int(cpu_map2(1),ilevel)
   end if
+
+!!$  do ind=1,twotondim
+!!$     iskip=ncoarse+(ind-1)*ngridmax
+!!$     do i=1,active(ilevel)%ngrid
+!!$        print*,rho(active(ilevel)%igrid(i)+iskip),rho_tot
+!!$     end do
+!!$  end do
+
 
 111 format('   Entering rho_fine for level ',I2)
 
@@ -264,7 +224,6 @@ subroutine rho_from_current_level(ilevel)
   use pm_commons
   use hydro_commons
   use poisson_commons
-  use omp_lib
   implicit none
   integer::ilevel
   !------------------------------------------------------------------
@@ -277,52 +236,21 @@ subroutine rho_from_current_level(ilevel)
   integer::i,ig,ip,npart1
   real(dp)::dx
 
-  integer,dimension(1:nvector)::ind_grid,ind_cell
-  integer,dimension(1:nvector)::ind_part,ind_grid_part
-  real(dp),dimension(1:nvector,1:ndim)::x0
-  integer ,dimension(1:ncpu,1:IRandNumSize)::allseed
+  integer,dimension(1:nvector),save::ind_grid,ind_cell
+  integer,dimension(1:nvector),save::ind_part,ind_grid_part
+  real(dp),dimension(1:nvector,1:ndim),save::x0
 
   integer :: counter
-
-  integer,dimension(1:IRandNumSize),save :: ompseed
-  real(dp) :: rand,proba,factor
-  integer :: nrest1,nrest2
-  logical :: ok
-!$omp threadprivate(ompseed)
-
-  if(localseed(1)==-1)then
-     call rans(ncpu,iseed,allseed)
-     localseed=allseed(myid,1:IRandNumSize)
-  end if
-
-#ifdef _OPENMP
-!$omp parallel
-  ! Give slight offsets for each OMP threads
-  ompseed=MOD(localseed+omp_get_thread_num()+1,4096)
-!$omp end parallel
-#else
-  ompseed=MOD(localseed+1,4096)
-#endif
-  call ranf(localseed,rand)
-
   ! Mesh spacing in that level
   dx=0.5D0**ilevel
 
   ! Loop over cpus
-!$omp parallel private(ig,ip,ind_grid,ind_part,ind_grid_part,ind_cell,x0,igrid,npart1,ipart,counter, &
-!$omp & rand,proba,nrest1,nrest2,ok,factor) reduction(+:multipole)
   do icpu=1,ncpu
      ! Loop over grids
+     igrid=headl(icpu,ilevel)
      ig=0
      ip=0
-     ! Dynamic is faster
-!$omp do schedule(dynamic,nchunk)
      do jgrid=1,numbl(icpu,ilevel)
-        if(icpu==myid)then
-           igrid=active(ilevel)%igrid(jgrid)
-        else
-           igrid=reception(icpu,ilevel)%igrid(jgrid)
-        end if
         npart1=numbp(igrid)  ! Number of particles in the grid
         if(npart1>0)then
            ig=ig+1
@@ -330,32 +258,14 @@ subroutine rho_from_current_level(ilevel)
            ipart=headp(igrid)
 
            counter = 0
-           nrest2=npartmax_rho
            ! Loop over particles
-           if(npartmax_rho>0 .and. ilevel>=cg_levelmin .and. npart1>npartmax_rho)then
-              factor = real(npart1,dp)/npartmax_rho
-              !write(*,*)"ilevel = ",ilevel,"npart = ",npart1,"factor = ",factor
-           else
-              factor = 1d0
-           end if
            do jpart=1,npart1
               if(ig==0)then
                  ig=1
                  ind_grid(ig)=igrid
               end if
-
-              ok=.true.
-              ! If the number of particles in grid is larger than threshold, apply random sampling.
-              if(npartmax_rho>0 .and. ilevel>=cg_levelmin .and. npart1>npartmax_rho)then
-                 nrest1=npart1-jpart+1
-                 proba=real(nrest2,dp)/nrest1
-                 call ranf(ompseed,rand)
-                 ok=rand<proba
-              end if
-              if(ok)nrest2=nrest2-1
-
               ! MC Tracer patch
-              if (is_cloud(typep(ipart)) .or. (is_not_tracer(typep(ipart)) .and. ok)) then
+              if (is_not_tracer(typep(ipart))) then
                  ip=ip+1
                  ind_part(ip)=ipart
                  ind_grid_part(ip)=ig
@@ -363,7 +273,6 @@ subroutine rho_from_current_level(ilevel)
                  counter = counter + 1
               end if
               ! End MC Tracer patch
-
               if(ip==nvector)then
                  ! Lower left corner of 3x3x3 grid-cube
                  do idim=1,ndim
@@ -377,7 +286,7 @@ subroutine rho_from_current_level(ilevel)
 #ifdef TSC
                  call tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel)
 #else
-                 call cic_amr(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel,multipole,factor)
+                 call cic_amr(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel)
 #endif
                  ip=0
                  ig=0
@@ -387,34 +296,14 @@ subroutine rho_from_current_level(ilevel)
            end do
            ! End loop over particles
 
-           ! Remove cache for new probability calculation in the next grid
-           if(npartmax_rho>0 .and. ilevel>=cg_levelmin .and. npart1>npartmax_rho .and. ip>0)then
-              ! Lower left corner of 3x3x3 grid-cube
-              do idim=1,ndim
-                 do i=1,ig
-                    x0(i,idim)=xg(ind_grid(i),idim)-3.0D0*dx
-                 end do
-              end do
-              do i=1,ig
-                 ind_cell(i)=father(ind_grid(i))
-              end do
-#ifdef TSC
-        call tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel)
-#else
-              call cic_amr(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel,multipole,factor)
-#endif
-              ip=0
-              ig=0
-              counter=0
-           end if
-
            ! Only tracers, remove one cache line
            if (counter == 0 .and. ig > 0) then
               ig = ig - 1
            end if
         end if
+
+        igrid=next(igrid)   ! Go to next grid
      end do
-!$omp end do nowait
      ! End loop over grids
 
      if(ip>0)then
@@ -430,223 +319,25 @@ subroutine rho_from_current_level(ilevel)
 #ifdef TSC
         call tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel)
 #else
-        call cic_amr(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel,multipole,factor)
+        call cic_amr(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel)
 #endif
      end if
 
   end do
   ! End loop over cpus
-!$omp end parallel
+
 end subroutine rho_from_current_level
-
-#ifdef DICE
-subroutine multipole_from_current_level(ilevel)
-  use amr_commons
-  use pm_commons
-  use hydro_commons
-  use poisson_commons
-  implicit none
-  integer::ilevel
-  !------------------------------------------------------------------
-  ! This routine computes the density field at level ilevel using
-  ! the CIC scheme from particles that are not entirely in
-  ! level ilevel (boundary particles).
-  ! Arrays flag1 and flag2 are used as temporary work space.
-  !------------------------------------------------------------------
-  integer::igrid,jgrid,ipart,jpart,idim,icpu,ind,iskip,ibound
-  integer::j,ig,ip,npart1,npart2,next_part
-  real(dp)::dx
-
-  integer,dimension(1:nvector),save::ind_grid,ind_cell
-  integer,dimension(1:nvector),save::ind_part,ind_grid_part
-  real(dp),dimension(1:nvector,1:ndim),save::x0
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!
-  integer ::nx_loc
-  real(dp),dimension(1:twotondim,1:3)::xc
-  integer ::ix,iy,iz
-  real(kind=8)::dx_loc,scale,vol_loc
-  real(dp),dimension(1:3)::skip_loc
-
-  ! Mesh spacing in that level
-  dx=0.5D0**ilevel
-  nx_loc=(icoarse_max-icoarse_min+1)
-  skip_loc=(/0.0d0,0.0d0,0.0d0/)
-  if(ndim>0)skip_loc(1)=dble(icoarse_min)
-  if(ndim>1)skip_loc(2)=dble(jcoarse_min)
-  if(ndim>2)skip_loc(3)=dble(kcoarse_min)
-  scale=boxlen/dble(nx_loc)
-  dx_loc=dx*scale
-  vol_loc=dx_loc**ndim
-  do ind=1,twotondim
-     iz=(ind-1)/4
-     iy=(ind-1-4*iz)/2
-     ix=(ind-1-2*iy-4*iz)
-     if(ndim>0)xc(ind,1)=(dble(ix)-0.5D0)*dx
-     if(ndim>1)xc(ind,2)=(dble(iy)-0.5D0)*dx
-     if(ndim>2)xc(ind,3)=(dble(iz)-0.5D0)*dx
-  end do
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-  if(verbose)write(*,111)ilevel
-  ! Mesh spacing in that level
-  dx=0.5D0**ilevel
-
-
-  ! Initialize unew field to zero
-  do icpu=1,ncpu
-     do ind=1,twotondim
-        iskip=ncoarse+(ind-1)*ngridmax
-        do idim=1,ndim+1
-           do j=1,reception(icpu,ilevel)%ngrid
-              unew(reception(icpu,ilevel)%igrid(j)+iskip,idim)=0.0D0
-           end do
-        end do
-     end do
-  end do
-  do ind=1,twotondim
-     iskip=ncoarse+(ind-1)*ngridmax
-     do idim=1,ndim+1
-        do j=1,active(ilevel)%ngrid
-           unew(active(ilevel)%igrid(j)+iskip,idim)=0.0D0
-        end do
-     end do
-  end do
-  ! Reset unew in physical boundaries
-  do ibound=1,nboundary
-     do ind=1,twotondim
-        iskip=ncoarse+(ind-1)*ngridmax
-        do idim=1,ndim+1
-           do j=1,boundary(ibound,ilevel)%ngrid
-              unew(boundary(ibound,ilevel)%igrid(j)+iskip,idim)=0.0
-           end do
-        end do
-     end do
-  end do
-
-  ! Loop over cpus
-  do icpu=1,ncpu
-     ! Loop over grids
-     igrid=headl(icpu,ilevel)
-     ig=0
-     ip=0
-     do jgrid=1,numbl(icpu,ilevel)
-        npart1=numbp(igrid)  ! Number of particles in the grid
-        npart2=0
-
-        ! Count gas particles
-        if(npart1>0)then
-           ipart=headp(igrid)
-           ! Loop over particles
-           do jpart=1,npart1
-              ! Save next particle   <--- Very important !!!
-              next_part=nextp(ipart)
-              if(idp(ipart).eq.1)then
-                 npart2=npart2+1
-              endif
-              ipart=next_part  ! Go to next particle
-           end do
-        endif
-
-        if(npart2>0)then
-           ig=ig+1
-           ind_grid(ig)=igrid
-           ipart=headp(igrid)
-           ! Loop over particles
-           do jpart=1,npart1
-              ! Save next particle   <--- Very important !!!
-              next_part=nextp(ipart)
-              ! Select only gas particles
-              ! TODO: check interference with tracers
-              if(idp(ipart).eq.1)then
-                 if(ig==0)then
-                    ig=1
-                    ind_grid(ig)=igrid
-                 end if
-                 ip=ip+1
-                 ind_part(ip)=ipart
-                 ind_grid_part(ip)=ig
-              endif
-              if(ip==nvector)then
-                 ! Lower left corner of 3x3x3 grid-cube
-                 do idim=1,ndim
-                    do j=1,ig
-                       x0(j,idim)=xg(ind_grid(j),idim)-3.0D0*dx
-                    end do
-                 end do
-                 do j=1,ig
-                    ind_cell(j)=father(ind_grid(j))
-                 end do
-                 call ngp_amr_gas(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel)
-                 ip=0
-                 ig=0
-              end if
-              ipart=next_part  ! Go to next particle
-           end do
-           ! End loop over particles
-        end if
-        igrid=next(igrid)   ! Go to next grid
-     end do
-     ! End loop over grids
-
-     if(ip>0)then
-        ! Lower left corner of 3x3x3 grid-cube
-        do idim=1,ndim
-           do j=1,ig
-              x0(j,idim)=xg(ind_grid(j),idim)-3.0D0*dx
-           end do
-        end do
-        do j=1,ig
-           ind_cell(j)=father(ind_grid(j))
-        end do
-        call ngp_amr_gas(ind_cell,ind_part,ind_grid_part,x0,ig,ip,ilevel)
-     end if
-
-  end do
-  ! End loop over cpus
-
-  ! Update boundaries
-  do idim=1,ndim+1
-     call make_virtual_reverse_dp(unew(1,idim),ilevel)
-     call make_virtual_fine_dp(unew(1,idim),ilevel)
-  end do
-
-  ! Check for over-refinement
-  do ind=1,twotondim
-     iskip=ncoarse+(ind-1)*ngridmax
-     do j=1,active(ilevel)%ngrid
-        if(unew(active(ilevel)%igrid(j)+iskip,1)==0d0) then
-           unew(active(ilevel)%igrid(j)+iskip,1)=smallr*vol_loc
-           do idim=1,ndim
-              unew(active(ilevel)%igrid(j)+iskip,idim+1)=(xg(active(ilevel)%igrid(j),idim)+xc(ind,idim)-skip_loc(idim))*scale &
-                 & *unew(active(ilevel)%igrid(j)+iskip,1)
-           end do
-        endif
-     end do
-  end do
-
-  do idim=1,ndim+1
-     call make_virtual_fine_dp(unew(1,idim),ilevel)
-  end do
-
-  111 format('   Entering multipole_from_current_level for level',i2)
-
-end subroutine multipole_from_current_level
-#endif
-
 !##############################################################################
 !##############################################################################
 !##############################################################################
 !##############################################################################
-subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp,factor)
+subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
   use amr_commons
   use pm_commons
   use poisson_commons
-#ifdef DICE
-  use dice_commons
-#endif
   use hydro_commons, ONLY: mass_sph
   implicit none
-  integer::ng,np,ilevel,ind_grid_now
+  integer::ng,np,ilevel
   integer ,dimension(1:nvector)::ind_cell,ind_grid_part,ind_part
   real(dp),dimension(1:nvector,1:ndim)::x0
   !------------------------------------------------------------------
@@ -655,28 +346,23 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
   ! are updated by the input particle list.
   !------------------------------------------------------------------
   logical::error
-  integer::j,ind,idim,nx_loc,ind2,ind_nbor
+  integer::j,ind,idim,nx_loc
   real(dp)::dx,dx_loc,scale,vol_loc
   ! Grid-based arrays
-  integer ,dimension(1:nvector,1:threetondim)::nbors_father_cells
-  integer ,dimension(1:nvector,1:twotondim)::nbors_father_grids
+  integer ,dimension(1:nvector,1:threetondim),save::nbors_father_cells
+  integer ,dimension(1:nvector,1:twotondim),save::nbors_father_grids
   ! Particle-based arrays
-  logical ,dimension(1:nvector,1:twotondim)::ok,ok2
-  real(dp),dimension(1:nvector)::mmm
-  real(dp),dimension(1:ndim+1)::multipole_tmp
+  logical ,dimension(1:nvector),save::ok
+  real(dp),dimension(1:nvector),save::mmm
   ! Save type
-  type(part_t),dimension(1:nvector)::fam
-  real(dp),dimension(1:nvector,1:twotondim)::vol2,vol3
-  real(dp),dimension(1:nvector,1:ndim)::x,dd,dg
-  integer ,dimension(1:nvector,1:ndim)::ig,id,igg,igd,icg,icd
-  real(dp),dimension(1:nvector,1:twotondim)::vol
-  integer ,dimension(1:nvector,1:twotondim)::igrid,icell,indp,kg
+  type(part_t),dimension(1:nvector),save::fam
+  real(dp),dimension(1:nvector),save::vol2
+  real(dp),dimension(1:nvector,1:ndim),save::x,dd,dg
+  integer ,dimension(1:nvector,1:ndim),save::ig,id,igg,igd,icg,icd
+  real(dp),dimension(1:nvector,1:twotondim),save::vol
+  integer ,dimension(1:nvector,1:twotondim),save::igrid,icell,indp,kg
   real(dp),dimension(1:3)::skip_loc
-  real(dp),dimension(1:threetondim,1:twotondim)::rho_add,rho_top_add,phi_add
-  integer ,dimension(1:threetondim,1:twotondim)::indp_nb
-
-  real(dp)::factor
-
+  
   ! Mesh spacing in that level
   dx=0.5D0**ilevel
   nx_loc=(icoarse_max-icoarse_min+1)
@@ -687,6 +373,7 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
   scale=boxlen/dble(nx_loc)
   dx_loc=dx*scale
   vol_loc=dx_loc**ndim
+
 
   ! Gather neighboring father cells (should be present anytime !)
   call get3cubefather(ind_cell,nbors_father_cells,nbors_father_grids,ng,ilevel)
@@ -710,9 +397,9 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
 
   ! Gather particle mass and family
   do j=1,np
-     fam(j)=typep(ind_part(j))
+     fam(j) = typep(ind_part(j))
      if (is_tracer(fam(j))) then
-        mmm(j) = 0d0
+        mmm(j)=0.0d0
      else
         mmm(j)=mp(ind_part(j))
      end if
@@ -722,17 +409,17 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
   !        for no reason that I can think of
   if(ilevel==levelmin)then
      do j=1,np
-        ! multipole(1)=multipole(1)+mp(ind_part(j))
-        multipole_tmp(1)=multipole_tmp(1)+mmm(j)
+        multipole(1)=multipole(1)+mp(ind_part(j))
+        ! multipole(1)=multipole(1)+mmm(j)
      end do
      do idim=1,ndim
         do j=1,np
-           ! multipole(idim+1)=multipole(idim+1)+mp(ind_part(j))*xp(ind_part(j),idim)
-           multipole_tmp(idim+1)=multipole_tmp(idim+1)+mmm(j)*xp(ind_part(j),idim)
+           multipole(idim+1)=multipole(idim+1)+mp(ind_part(j))*xp(ind_part(j),idim)
+           ! multipole(idim+1)=multipole(idim+1)+mmm(j)*xp(ind_part(j),idim)
         end do
      end do
   end if
-
+  
   ! Check for illegal moves
   error=.false.
   do idim=1,ndim
@@ -826,12 +513,7 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
 #endif
   do ind=1,twotondim
      do j=1,np
-        ind_nbor=nbors_father_cells(ind_grid_part(j),kg(j,ind))
-        if(ind_nbor > 0)then
-           igrid(j,ind)=son(ind_nbor)
-        else
-           igrid(j,ind)=0
-        endif
+        igrid(j,ind)=son(nbors_father_cells(ind_grid_part(j),kg(j,ind)))
      end do
   end do
 
@@ -869,46 +551,56 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
   end do
 #endif
 
-  ! Update mass density and number density fields
+  ! Compute parent cell adress
   do ind=1,twotondim
      do j=1,np
-        ok(j,ind)=(igrid(j,ind)>0).and.is_not_tracer(fam(j))
-#ifdef DICE
-        if(dice_init) ok(j,ind)=ok(j,ind).and.(idp(ind_part(j)).ne.1)
-#endif
+        indp(j,ind)=ncoarse+(icell(j,ind)-1)*ngridmax+igrid(j,ind)
+     end do
+  end do
+
+  ! Update mass density and number density fields
+  do ind=1,twotondim
+
+     do j=1,np
+        ok(j)=(igrid(j,ind)>0).and.is_not_tracer(fam(j))
      end do
 
      do j=1,np
-        if(is_cloud(fam(j))) then
-           vol2(j,ind)=mmm(j)*vol(j,ind)/vol_loc
-        else
-           vol2(j,ind)=mmm(j)*vol(j,ind)/vol_loc * factor
-        end if
-        if (point_mass_sink .and. is_cloud(fam(j))) then
-           if (is_central_cloud(fam(j))) then
-              vol2(j,ind)=vol(j,ind)/vol_loc*msink(-idp(ind_part(j)))
-           else
-              vol2(j,ind)=0
+        vol2(j)=mmm(j)*vol(j,ind)/vol_loc
+     end do
+
+     if(cic_levelmax==0.or.ilevel<=cic_levelmax)then
+        do j=1,np
+           if(ok(j))then
+              rho(indp(j,ind))=rho(indp(j,ind))+vol2(j)
            end if
-        end if
-     end do
+        end do
+     else if(ilevel>cic_levelmax)then
+        do j=1,np
+           ! check for non-DM (and non-tracer)
+           if ( ok(j) .and. is_not_DM(fam(j)) ) then
+              rho(indp(j,ind))=rho(indp(j,ind))+vol2(j)
+           end if
+        end do
+     endif
+
+     if(ilevel==cic_levelmax)then
+        do j=1,np
+           ! check for DM
+           if ( ok(j) .and. is_DM(fam(j)) ) then
+              rho_top(indp(j,ind))=rho_top(indp(j,ind))+vol2(j)
+           end if
+        end do
+     endif
 
      do j=1,np
-        if(is_cloud(fam(j))) then
-           vol3(j,ind)=vol(j,ind)
-        else
-           vol3(j,ind)=vol(j,ind) * factor
-        end if
+        vol2(j)=vol(j,ind)
      end do
 
      ! Remove test particles for static runs
      if(static)then
         do j=1,np
-           ok2(j,ind)=ok(j,ind).and.mmm(j)>0.0
-        end do
-     else
-        do j=1,np
-           ok2(j,ind)=ok(j,ind)
+           ok(j)=ok(j).and.mmm(j)>0.0
         end do
      endif
 
@@ -916,7 +608,7 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
      if(mass_cut_refine>0.0)then
         do j=1,np
            if ( is_DM(fam(j)) ) then
-              ok2(j,ind)=ok2(j,ind) .and. mmm(j) < mass_cut_refine
+              ok(j)=ok(j) .and. mmm(j) < mass_cut_refine
            endif
         end do
      endif
@@ -925,141 +617,38 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
      if(star)then
         do j=1,np
            if ( is_not_DM(fam(j)) ) then
-              vol3(j,ind) = vol3(j,ind)*mmm(j)/mass_sph
+              vol2(j) = vol2(j)*mmm(j)/mass_sph
            endif
         end do
      endif
-  end do
 
-  rho_add = 0d0; rho_top_add = 0d0; phi_add = 0d0
-  ind_grid_now = 0
-  do j=1,np
-     if(ind_grid_part(j) /= ind_grid_now) then
-        if(ind_grid_now > 0) then
-           ! Compute neighboring grid indices
-           do ind2=1,threetondim
-              do ind=1,twotondim
-                 ind_nbor = nbors_father_cells(ind_grid_now,ind2)
-                 if(ind_nbor>0)then
-                    indp_nb(ind2,ind)=ncoarse+(ind-1)*ngridmax+son(ind_nbor)
-                 else
-                    indp_nb(ind2,ind)=0
-                 end if
-              end do
-           end do
-           ! Add temporal arrays to common arrays
-           do ind2=1,threetondim
-              do ind=1,twotondim
-                 if(indp_nb(ind2,ind)>0 .and. rho_add(ind2,ind)>0d0) then
-!$omp atomic update
-                    rho(indp_nb(ind2,ind))=rho(indp_nb(ind2,ind))+rho_add(ind2,ind)
-                 end if
-              end do
-           end do
-           do ind2=1,threetondim
-              do ind=1,twotondim
-                 if(indp_nb(ind2,ind)>0 .and. rho_top_add(ind2,ind)>0d0) then
-!$omp atomic update
-                    rho_top(indp_nb(ind2,ind))=rho_top(indp_nb(ind2,ind))+rho_top_add(ind2,ind)
-                 end if
-              end do
-           end do
-           do ind2=1,threetondim
-              do ind=1,twotondim
-                 if(indp_nb(ind2,ind)>0 .and. phi_add(ind2,ind)>0d0) then
-!$omp atomic update
-                    phi(indp_nb(ind2,ind))=phi(indp_nb(ind2,ind))+phi_add(ind2,ind)
-                 end if
-              end do
-           end do
-        end if
-        rho_add = 0d0; rho_top_add = 0d0; phi_add = 0d0
-        ind_grid_now = ind_grid_part(j)
-     end if
+     if(cic_levelmax==0.or.ilevel<cic_levelmax)then
+        do j=1,np
+           if(ok(j))then
+              phi(indp(j,ind))=phi(indp(j,ind))+vol2(j)
+           end if
+        end do
+     else if(ilevel>=cic_levelmax)then
+        do j=1,np
+           if ( ok(j) .and. is_not_DM(fam(j)) ) then
+              phi(indp(j,ind))=phi(indp(j,ind))+vol2(j)
+           end if
+        end do
+     endif
 
-     do ind=1,twotondim
-        if(cic_levelmax==0.or.ilevel<=cic_levelmax)then
-           if(ok(j,ind)) then
-              rho_add(kg(j,ind),icell(j,ind))=rho_add(kg(j,ind),icell(j,ind))+vol2(j,ind)
-           end if
-        else if(ilevel>cic_levelmax)then
-           ! check for non-DM (and non-tracer)
-           if ( ok(j,ind) .and. is_not_DM(fam(j)) ) then
-              rho_add(kg(j,ind),icell(j,ind))=rho_add(kg(j,ind),icell(j,ind))+vol2(j,ind)
-           end if
-        end if
-     end do
-
-     do ind=1,twotondim
-        if(ilevel==cic_levelmax)then
-           ! check for DM
-           if ( ok(j,ind) .and. is_DM(fam(j)) ) then
-              rho_top_add(kg(j,ind),icell(j,ind))=rho_top_add(kg(j,ind),icell(j,ind))+vol2(j,ind)
-           end if
-        endif
-     end do
-
-     do ind=1,twotondim
-        if(cic_levelmax==0.or.ilevel<cic_levelmax)then
-           if(ok2(j,ind))then
-              phi_add(kg(j,ind),icell(j,ind))=phi_add(kg(j,ind),icell(j,ind))+vol3(j,ind)
-           end if
-        else if(ilevel>=cic_levelmax)then
-           if ( ok2(j,ind) .and. is_not_DM(fam(j)) ) then
-              phi_add(kg(j,ind),icell(j,ind))=phi_add(kg(j,ind),icell(j,ind))+vol3(j,ind)
-           end if
-        endif
-        ! Always refine sinks to the maximum level
-        ! by setting particle number density above m_refine(ilevel)
-        if(sink_refine)then
+     ! Always refine sinks to the maximum level
+     ! by setting particle number density above m_refine(ilevel)
+     if(sink_refine)then
+        do j=1,np
            if ( is_cloud(fam(j)) ) then
               ! if (direct_force_sink(-1*idp(ind_part(j))))then
-              phi_add(kg(j,ind),icell(j,ind))=phi_add(kg(j,ind),icell(j,ind))+m_refine(ilevel)
+              phi(indp(j,ind))=phi(indp(j,ind))+m_refine(ilevel)
               ! endif
            end if
-        end if
-     end do
+        end do
+     end if
   end do
 
-  ! Empty remaining cache
-  if(ind_grid_now > 0) then
-     ! Compute neighboring grid indices
-     do ind2=1,threetondim
-        do ind=1,twotondim
-           ind_nbor = nbors_father_cells(ind_grid_now,ind2)
-           if(ind_nbor>0)then
-              indp_nb(ind2,ind)=ncoarse+(ind-1)*ngridmax+son(ind_nbor)
-           else
-              indp_nb(ind2,ind)=0
-           end if
-        end do
-     end do
-     ! Add temporal arrays to common arrays
-     do ind2=1,threetondim
-        do ind=1,twotondim
-           if(indp_nb(ind2,ind)>0 .and. rho_add(ind2,ind)>0d0) then
-!$omp atomic update
-              rho(indp_nb(ind2,ind))=rho(indp_nb(ind2,ind))+rho_add(ind2,ind)
-           end if
-        end do
-     end do
-     do ind2=1,threetondim
-        do ind=1,twotondim
-           if(indp_nb(ind2,ind)>0 .and. rho_top_add(ind2,ind)>0d0) then
-!$omp atomic update
-              rho_top(indp_nb(ind2,ind))=rho_top(indp_nb(ind2,ind))+rho_top_add(ind2,ind)
-           end if
-        end do
-     end do
-     do ind2=1,threetondim
-        do ind=1,twotondim
-           if(indp_nb(ind2,ind)>0 .and. phi_add(ind2,ind)>0d0) then
-!$omp atomic update
-              phi(indp_nb(ind2,ind))=phi(indp_nb(ind2,ind))+phi_add(ind2,ind)
-           end if
-        end do
-     end do
-  end if
 end subroutine cic_amr
 !###########################################################
 !###########################################################
@@ -1082,14 +671,13 @@ subroutine multipole_fine(ilevel)
   ! solver, the restriction is necessary in any case.
   !-------------------------------------------------------------------
   integer ::ind,i,ncache,igrid,ngrid,iskip,nx_loc
-  integer ::idim,ix,iy,iz
-  integer,dimension(1:nvector)::ind_grid
-  real(kind=8)::dx,dx_loc,scale,vol_loc
+  integer ::idim,nleaf,nsplit,ix,iy,iz,iskip_son,ind_son,ind_grid_son,ind_cell_son
+  integer,dimension(1:nvector),save::ind_grid,ind_cell,ind_leaf,ind_split
+  real(dp),dimension(1:nvector,1:ndim),save::xx
+  real(dp),dimension(1:nvector),save::dd
+  real(kind=8)::dx,dx_loc,scale,vol_loc,mm
   real(dp),dimension(1:3)::skip_loc
   real(dp),dimension(1:twotondim,1:3)::xc
-
-
-  common /omp_multipole_fine/ skip_loc,dx,dx_loc,scale,vol_loc,nx_loc
 
   if(numbtot(1,ilevel)==0)return
   if(verbose)write(*,111)ilevel
@@ -1114,31 +702,105 @@ subroutine multipole_fine(ilevel)
   end do
 
   ! Initialize fields to zero
-!$omp parallel private(iskip,ncache)
   do ind=1,twotondim
      iskip=ncoarse+(ind-1)*ngridmax
-!$omp do
      do i=1,active(ilevel)%ngrid
         unew(active(ilevel)%igrid(i)+iskip,1)=0.0D0
-        do idim=1,ndim
+     end do
+     do idim=1,ndim
+        do i=1,active(ilevel)%ngrid
            unew(active(ilevel)%igrid(i)+iskip,idim+1)=0.0D0
         end do
      end do
-!$omp end do nowait
   end do
-!$omp barrier
+
   ! Compute mass multipoles in each cell
   ncache=active(ilevel)%ngrid
-!$omp do private(ngrid,ind_grid)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
         ind_grid(i)=active(ilevel)%igrid(igrid+i-1)
      end do
-     call sub_multipole_fine(ind_grid,ngrid,ilevel,xc)
-  end do
-!$omp end do nowait
-!$omp end parallel
+
+     ! Loop over cells
+     do ind=1,twotondim
+        iskip=ncoarse+(ind-1)*ngridmax
+        ! Gather cell indices
+        do i=1,ngrid
+           ind_cell(i)=ind_grid(i)+iskip
+        end do
+
+        ! Gather leaf cells and compute cell centers
+        nleaf=0
+        do i=1,ngrid
+           if(son(ind_cell(i))==0)then
+              nleaf=nleaf+1
+              ind_leaf(nleaf)=ind_cell(i)
+              do idim=1,ndim
+                 xx(nleaf,idim)=(xg(ind_grid(i),idim)+xc(ind,idim)-skip_loc(idim))*scale
+              end do
+           end if
+        end do
+
+        ! Compute gas multipole for leaf cells only
+        if(hydro)then
+           do i=1,nleaf
+              mm=max(uold(ind_leaf(i),1),smallr)*vol_loc
+              unew(ind_leaf(i),1)=unew(ind_leaf(i),1)+mm
+           end do
+           do idim=1,ndim
+              do i=1,nleaf
+                 mm=max(uold(ind_leaf(i),1),smallr)*vol_loc
+                 unew(ind_leaf(i),idim+1)=unew(ind_leaf(i),idim+1)+mm*xx(i,idim)
+              end do
+           end do
+        endif
+
+        ! Add analytical density profile for leaf cells only
+        if(gravity_type < 0)then
+           ! Call user defined routine rho_ana
+           call rho_ana(xx,dd,dx_loc,nleaf)
+           ! Scatter results to array phi
+           do i=1,nleaf
+              unew(ind_leaf(i),1)=unew(ind_leaf(i),1)+dd(i)*vol_loc
+           end do
+           do idim=1,ndim
+              do i=1,nleaf
+                 mm=dd(i)*vol_loc
+                 unew(ind_leaf(i),idim+1)=unew(ind_leaf(i),idim+1)+mm*xx(i,idim)
+              end do
+           end do
+        end if
+
+        ! Gather split cells
+        nsplit=0
+        do i=1,ngrid
+           if(son(ind_cell(i))>0)then
+              nsplit=nsplit+1
+              ind_split(nsplit)=ind_cell(i)
+           end if
+        end do
+
+        ! Add children multipoles
+        do ind_son=1,twotondim
+           iskip_son=ncoarse+(ind_son-1)*ngridmax
+           do i=1,nsplit
+              ind_grid_son=son(ind_split(i))
+              ind_cell_son=iskip_son+ind_grid_son
+              unew(ind_split(i),1)=unew(ind_split(i),1)+unew(ind_cell_son,1)
+           end do
+           do idim=1,ndim
+              do i=1,nsplit
+                 ind_grid_son=son(ind_split(i))
+                 ind_cell_son=iskip_son+ind_grid_son
+                 unew(ind_split(i),idim+1)=unew(ind_split(i),idim+1)+unew(ind_cell_son,idim+1)
+              end do
+           end do
+        end do
+
+     end do
+  enddo
+
   ! Update boundaries
   do idim=1,ndim+1
      call make_virtual_fine_dp(unew(1,idim),ilevel)
@@ -1147,235 +809,6 @@ subroutine multipole_fine(ilevel)
 111 format('   Entering multipole_fine for level',i2)
 
 end subroutine multipole_fine
-!###########################################################
-!###########################################################
-!###########################################################
-!###########################################################
-subroutine sub_multipole_fine(ind_grid,ngrid,ilevel,xc)
-  use amr_commons
-  use hydro_commons
-  use poisson_commons
-  use mpi_mod
-  implicit none
-  integer::ilevel
-
-  integer ::ind,i,ngrid,iskip,nx_loc
-  integer ::idim,nleaf,nsplit,iskip_son,ind_son,ind_grid_son,ind_cell_son
-  integer,dimension(1:nvector)::ind_grid,ind_cell,ind_leaf,ind_split
-  real(dp),dimension(1:nvector,1:ndim)::xx
-  real(dp),dimension(1:nvector)::dd
-  real(kind=8)::dx,dx_loc,scale,vol_loc,mm
-  real(dp),dimension(1:3)::skip_loc
-  real(dp),dimension(1:twotondim,1:3)::xc
-
-  common /omp_multipole_fine/ skip_loc,dx,dx_loc,scale,vol_loc,nx_loc
-
-  ! Loop over cells
-  do ind=1,twotondim
-     iskip=ncoarse+(ind-1)*ngridmax
-     ! Gather cell indices
-     do i=1,ngrid
-        ind_cell(i)=ind_grid(i)+iskip
-     end do
-
-     ! Gather leaf cells and compute cell centers
-     nleaf=0
-     do i=1,ngrid
-        if(son(ind_cell(i))==0)then
-           nleaf=nleaf+1
-           ind_leaf(nleaf)=ind_cell(i)
-           do idim=1,ndim
-              xx(nleaf,idim)=(xg(ind_grid(i),idim)+xc(ind,idim)-skip_loc(idim))*scale
-           end do
-        end if
-     end do
-
-     ! Compute gas multipole for leaf cells only
-     if(hydro)then
-        do i=1,nleaf
-           mm=max(uold(ind_leaf(i),1),smallr)*vol_loc
-           unew(ind_leaf(i),1)=unew(ind_leaf(i),1)+mm
-        end do
-        do idim=1,ndim
-           do i=1,nleaf
-              mm=max(uold(ind_leaf(i),1),smallr)*vol_loc
-              unew(ind_leaf(i),idim+1)=unew(ind_leaf(i),idim+1)+mm*xx(i,idim)
-           end do
-        end do
-     endif
-
-     ! Add analytical density profile for leaf cells only
-     if(gravity_type < 0)then
-        ! Call user defined routine rho_ana
-        call rho_ana(xx,dd,dx_loc,nleaf)
-        ! Scatter results to array phi
-        do i=1,nleaf
-           unew(ind_leaf(i),1)=unew(ind_leaf(i),1)+dd(i)*vol_loc
-        end do
-        do idim=1,ndim
-           do i=1,nleaf
-              mm=dd(i)*vol_loc
-              unew(ind_leaf(i),idim+1)=unew(ind_leaf(i),idim+1)+mm*xx(i,idim)
-           end do
-        end do
-     end if
-
-     ! Gather split cells
-     nsplit=0
-     do i=1,ngrid
-        if(son(ind_cell(i))>0)then
-           nsplit=nsplit+1
-           ind_split(nsplit)=ind_cell(i)
-        end if
-     end do
-
-     ! Add children multipoles
-     do ind_son=1,twotondim
-        iskip_son=ncoarse+(ind_son-1)*ngridmax
-        do i=1,nsplit
-           ind_grid_son=son(ind_split(i))
-           ind_cell_son=iskip_son+ind_grid_son
-           unew(ind_split(i),1)=unew(ind_split(i),1)+unew(ind_cell_son,1)
-        end do
-        do idim=1,ndim
-           do i=1,nsplit
-              ind_grid_son=son(ind_split(i))
-              ind_cell_son=iskip_son+ind_grid_son
-              unew(ind_split(i),idim+1)=unew(ind_split(i),idim+1)+unew(ind_cell_son,idim+1)
-           end do
-        end do
-     end do
-
-  end do
-
-end subroutine sub_multipole_fine
-!###########################################################
-!###########################################################
-!###########################################################
-!###########################################################
-#ifdef DICE
-subroutine ngp_amr_gas(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
-  use amr_commons
-  use pm_commons
-  use hydro_commons
-  use poisson_commons
-  implicit none
-  integer::ng,np,ilevel
-  integer ,dimension(1:nvector)::ind_cell,ind_grid_part,ind_part
-  real(dp),dimension(1:nvector,1:ndim)::x0
-  !------------------------------------------------------------------
-  ! This routine computes the density field at level ilevel using
-  ! the CIC scheme. Only cells that are in level ilevel
-  ! are updated by the input particle list.
-  !------------------------------------------------------------------
-  integer::j,idim,nx_loc
-  real(dp)::dx,dx_loc,scale
-  ! Grid-based arrays
-  integer ,dimension(1:nvector,1:threetondim),save::nbors_father_cells
-  integer ,dimension(1:nvector,1:twotondim),save::nbors_father_grids
-  ! Particle-based arrays
-  logical ,dimension(1:nvector),save::ok
-  real(dp),dimension(1:nvector,1:ndim),save::x
-  integer ,dimension(1:nvector,1:ndim),save::id,igd,icd
-  integer ,dimension(1:nvector),save::igrid,icell,indp,kg
-  real(dp),dimension(1:3)::skip_loc
-  real(dp),dimension(1:nvector),save::vol_loc
-
-
-  ! Mesh spacing in that level
-  dx=0.5D0**ilevel
-  nx_loc=(icoarse_max-icoarse_min+1)
-  skip_loc=(/0.0d0,0.0d0,0.0d0/)
-  if(ndim>0)skip_loc(1)=dble(icoarse_min)
-  if(ndim>1)skip_loc(2)=dble(jcoarse_min)
-  if(ndim>2)skip_loc(3)=dble(kcoarse_min)
-  scale=boxlen/dble(nx_loc)
-  dx_loc=dx*scale
-  vol_loc(1:nvector)=dx_loc**ndim
-
-  call get3cubefather(ind_cell,nbors_father_cells,nbors_father_grids,ng,ilevel)
-
-  ! Rescale position at level ilevel
-  do idim=1,ndim
-     do j=1,np
-        x(j,idim)=xp(ind_part(j),idim)/scale+skip_loc(idim)
-     end do
-  end do
-  do idim=1,ndim
-     do j=1,np
-        x(j,idim)=x(j,idim)-x0(ind_grid_part(j),idim)
-     end do
-  end do
-  do idim=1,ndim
-     do j=1,np
-        x(j,idim)=x(j,idim)/dx
-     end do
-  end do
-
-  ! NGP at level ilevel
-  do idim=1,ndim
-     do j=1,np
-        id(j,idim)=int(x(j,idim))
-     end do
-  end do
-
-   ! Compute parent grids
-  do idim=1,ndim
-     do j=1,np
-        igd(j,idim)=id(j,idim)/2
-     end do
-  end do
-  do j=1,np
-     kg(j)=1+igd(j,1)+3*igd(j,2)+9*igd(j,3)
-  end do
-  do j=1,np
-     igrid(j)=son(nbors_father_cells(ind_grid_part(j),kg(j)))
-  end do
-
-  ! Check if particles are entirely in level ilevel
-  ok(1:np)=.true.
-  do j=1,np
-     ok(j)=ok(j).and.igrid(j)>0
-  end do
-
-  ! Compute parent cell position
-  do idim=1,ndim
-     do j=1,np
-        if(ok(j)) then
-           icd(j,idim)=id(j,idim)-2*igd(j,idim)
-        endif
-     end do
-  end do
-
-  do j=1,np
-     if(ok(j)) then
-        icell(j)=1+icd(j,1)+2*icd(j,2)+4*icd(j,3)
-     endif
-  end do
-
-  ! Compute parent cell adresses
-  do j=1,np
-     if(ok(j))then
-        indp(j)=ncoarse+(icell(j)-1)*ngridmax+igrid(j)
-     else
-        indp(j) = nbors_father_cells(ind_grid_part(j),kg(j))
-     end if
-  end do
-
-  if(hydro)then
-     do j=1,np
-        unew(indp(j),1)=unew(indp(j),1)+mp(ind_part(j))
-     end do
-     do idim=1,ndim
-        do j=1,np
-           unew(indp(j),idim+1)=unew(indp(j),idim+1)+mp(ind_part(j))*xp(ind_part(j),idim)
-        end do
-     end do
-  endif
-
-
-end subroutine ngp_amr_gas
-#endif
 !###########################################################
 !###########################################################
 !###########################################################
@@ -1397,27 +830,32 @@ subroutine cic_from_multipole(ilevel)
   ! solver, the restriction is necessary in any case.
   !-------------------------------------------------------------------
   integer::ind,i,icpu,ncache,ngrid,iskip,ibound,igrid
-  integer,dimension(1:nvector)::ind_grid
+  integer,dimension(1:nvector),save::ind_grid
 
   if(numbtot(1,ilevel)==0)return
   if(verbose)write(*,111)ilevel
 
   ! Initialize density field to zero
-!$omp parallel do private(iskip)
-  do ind=1,twotondim
-     iskip=ncoarse+(ind-1)*ngridmax
-     do icpu=1,ncpu
+  do icpu=1,ncpu
+     do ind=1,twotondim
+        iskip=ncoarse+(ind-1)*ngridmax
         do i=1,reception(icpu,ilevel)%ngrid
            rho(reception(icpu,ilevel)%igrid(i)+iskip)=0.0D0
         end do
      end do
+  end do
+  do ind=1,twotondim
+     iskip=ncoarse+(ind-1)*ngridmax
      do i=1,active(ilevel)%ngrid
         rho(active(ilevel)%igrid(i)+iskip)=0.0D0
      end do
+  end do
   ! Reset rho in physical boundaries
-     do ibound=1,nboundary
+  do ibound=1,nboundary
+     do ind=1,twotondim
+        iskip=ncoarse+(ind-1)*ngridmax
         do i=1,boundary(ibound,ilevel)%ngrid
-           rho(boundary(ibound,ilevel)%igrid(i)+iskip)=0.0
+           rho(boundary(ibound,ilevel)%igrid(i)+iskip)=0
         end do
      end do
   end do
@@ -1425,14 +863,13 @@ subroutine cic_from_multipole(ilevel)
   if(hydro)then
      ! Perform a restriction over split cells (ilevel+1)
      ncache=active(ilevel)%ngrid
-!$omp parallel do private(ngrid,ind_grid) reduction(+:multipole) schedule(static)
      do igrid=1,ncache,nvector
         ! Gather nvector grids
         ngrid=MIN(nvector,ncache-igrid+1)
         do i=1,ngrid
            ind_grid(i)=active(ilevel)%igrid(igrid+i-1)
         end do
-        call cic_cell(ind_grid,ngrid,ilevel,multipole)
+        call cic_cell(ind_grid,ngrid,ilevel)
      end do
   end if
 
@@ -1443,7 +880,7 @@ end subroutine cic_from_multipole
 !###########################################################
 !###########################################################
 !###########################################################
-subroutine cic_cell(ind_grid,ngrid,ilevel,multipole_tmp)
+subroutine cic_cell(ind_grid,ngrid,ilevel)
   use amr_commons
   use poisson_commons
   use hydro_commons, ONLY: unew
@@ -1453,22 +890,20 @@ subroutine cic_cell(ind_grid,ngrid,ilevel,multipole_tmp)
   !
   !
   integer::i,j,idim,ind_cell_son,iskip_son,np,ind_son,nx_loc,ind
-  integer ,dimension(1:nvector)::ind_cell
-  integer ,dimension(1:nvector,1:threetondim)::nbors_father_cells
-  integer ,dimension(1:nvector,1:twotondim)::nbors_father_grids
+  integer ,dimension(1:nvector),save::ind_cell
+  integer ,dimension(1:nvector,1:threetondim),save::nbors_father_cells
+  integer ,dimension(1:nvector,1:twotondim),save::nbors_father_grids
   ! Particle-based arrays
-  logical ,dimension(1:nvector)::ok
-  real(dp),dimension(1:nvector)::mmm
-  real(dp),dimension(1:nvector)::vol2
-  real(dp),dimension(1:nvector,1:ndim)::x,dd,dg
-  integer ,dimension(1:nvector,1:ndim)::ig,id,igg,igd,icg,icd
-  real(dp),dimension(1:nvector,1:twotondim)::vol
-  integer ,dimension(1:nvector,1:twotondim)::igrid,icell,indp,kg
+  logical ,dimension(1:nvector),save::ok
+  real(dp),dimension(1:nvector),save::mmm
+  real(dp),dimension(1:nvector),save::vol2
+  real(dp),dimension(1:nvector,1:ndim),save::x,dd,dg
+  integer ,dimension(1:nvector,1:ndim),save::ig,id,igg,igd,icg,icd
+  real(dp),dimension(1:nvector,1:twotondim),save::vol
+  integer ,dimension(1:nvector,1:twotondim),save::igrid,icell,indp,kg
   real(dp),dimension(1:3)::skip_loc
   real(kind=8)::dx,dx_loc,scale,vol_loc
   logical::error
-
-  real(dp),dimension(1:ndim+1)::multipole_tmp
 
   ! Mesh spacing in that level
   dx=0.5D0**ilevel
@@ -1507,7 +942,7 @@ subroutine cic_cell(ind_grid,ngrid,ilevel,multipole_tmp)
         do idim=1,ndim+1
            do j=1,np
               ind_cell_son=iskip_son+ind_grid(j)
-              multipole_tmp(idim)=multipole_tmp(idim)+unew(ind_cell_son,idim)
+              multipole(idim)=multipole(idim)+unew(ind_cell_son,idim)
            end do
         end do
      endif
@@ -1683,7 +1118,6 @@ subroutine cic_cell(ind_grid,ngrid,ilevel,multipole_tmp)
         end do
         do j=1,np
            if(ok(j))then
-!$omp atomic update
               rho(indp(j,ind))=rho(indp(j,ind))+vol2(j)
            end if
         end do
@@ -1770,7 +1204,7 @@ subroutine tsc_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
   do j=1,np
      fam(j) = typep(ind_part(j))
      if (is_tracer(fam(j))) then
-        mmm(j)=0.
+        mmm(j)=0
      else
         mmm(j)=mp(ind_part(j))
      end if
@@ -2082,7 +1516,7 @@ subroutine tsc_from_multipole(ilevel)
      do ind=1,twotondim
         iskip=ncoarse+(ind-1)*ngridmax
         do i=1,boundary(ibound,ilevel)%ngrid
-           rho(boundary(ibound,ilevel)%igrid(i)+iskip)=0.0
+           rho(boundary(ibound,ilevel)%igrid(i)+iskip)=0
         end do
      end do
   end do

@@ -61,12 +61,12 @@ subroutine dump_all
            filename=TRIM(filedir)//'cooling_'//TRIM(nchar)//'.out'
            call output_cool(filename)
         end if
-        if(sink)then
-           filename=TRIM(filedir)//'sink_'//TRIM(nchar)//'.info'
-           call output_sink(filename)
-           filename=TRIM(filedir)//'sink_'//TRIM(nchar)//'.csv'
-           call output_sink_csv(filename)
-        endif
+      !   if(sink)then
+      !      filename=TRIM(filedir)//'sink_'//TRIM(nchar)//'.info'
+      !      call output_sink(filename)
+      !      filename=TRIM(filedir)//'sink_'//TRIM(nchar)//'.csv'
+      !      call output_sink_csv(filename)
+      !   endif
         ! Copy namelist file to output directory
         filename=TRIM(filedir)//'namelist.txt'
         OPEN(10, FILE=namelist_file, ACCESS="STREAM", ACTION="READ")
@@ -130,11 +130,11 @@ subroutine dump_all
         filename=trim(filedir)//'part_'//trim(nchar)//'.out'
         filename_desc=TRIM(filedir)//'part_file_descriptor.txt'
         call backup_part(filename, filename_desc)
-        if(sink)then
-           filename=trim(filedir)//'sink_'//trim(nchar)//'.out'
-           filename_desc=trim(filedir)//'sink_file_descriptor.txt'
-           call backup_sink(filename, filename_desc)
-        end if
+      !   if(sink)then
+      !      filename=trim(filedir)//'sink_'//trim(nchar)//'.out'
+      !      filename_desc=trim(filedir)//'sink_file_descriptor.txt'
+      !      call backup_sink(filename, filename_desc)
+      !   end if
 #ifndef WITHOUTMPI
         if(synchro_when_io) call MPI_BARRIER(MPI_COMM_WORLD,info)
 #endif

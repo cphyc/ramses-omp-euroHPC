@@ -14,7 +14,7 @@ subroutine read_params
   !--------------------------------------------------
   ! Local variables
   !--------------------------------------------------
-  integer::i,narg,levelmax,levelhold=-1
+  integer::i,narg,levelmax
   character(LEN=80)::infile, info_file
   character(LEN=80)::cmdarg
   character(LEN=5)::nchar
@@ -32,19 +32,19 @@ subroutine read_params
   !--------------------------------------------------
   ! Namelist definitions
   !--------------------------------------------------
-  namelist/run_params/clumpfind,cosmo,pic,sink,sinkprops,lightcone,poisson,hydro,rt,verbose,debug &
-       & ,nrestart,nrestart_seek,ncontrol,nstepmax,nsubcycle,load_weights,part_univ_cost,exact_timer,nremap,ordering &
+  namelist/run_params/clumpfind,cosmo,pic,sink,lightcone,poisson,hydro,rt,verbose,debug &
+       & ,nrestart,ncontrol,nstepmax,nsubcycle,load_weights,part_univ_cost,nremap,ordering &
        & ,bisec_tol,static,overload,cost_weighting,aton,nrestart_quad,restart_remap &
        & ,static_dm,static_gas,static_stars,convert_birth_times,use_proper_time,remap_pscalar &
-       & ,dtstop,magic_number,nchunk,dtmax,sinkprops_dir,remove_invalid_particle
-  namelist/output_params/output,noutput,foutput,aout,tout &
-       & ,tend,delta_tout,aend,delta_aout,gadget_output,walltime_hrs,minutes_dump &
-       & ,early_stop_hrs,dump_stop,foutput_timer,wallstep,output_now
+       & ,dtstop,magic_number,nchunk,dtmax
+  namelist/output_params/noutput,foutput,aout,tout &
+       & ,tend,delta_tout,aend,delta_aout,gadget_output,walltime_hrs,minutes_dump, &
+       & output_now
   namelist/amr_params/levelmin,levelmax,ngridmax,ngridtot &
        & ,npartmax,nparttot,nexpand,boxlen,nlevel_collapse &
-       & ,nsinkmax,levelhold,holdback
+       & ,nsinkmax
   namelist/poisson_params/epsilon,gravity_type,gravity_params &
-       & ,cg_levelmin,cic_levelmax,npartmax_rho
+       & ,cg_levelmin,cic_levelmax
   namelist/lightcone_params/thetay_cone,thetaz_cone,zmax_cone
   namelist/movie_params/levelmax_frame,nw_frame,nh_frame,ivar_frame &
        & ,xcentre_frame,ycentre_frame,zcentre_frame,movie_vars &
@@ -66,8 +66,7 @@ subroutine read_params
        & ,ic_mask_ivar,ic_mask_min,ic_mask_max,ic_mask_ptype,analytic_gas_profile
 #endif
   namelist/tracer_params/ MC_tracer,tracer,tracer_feed,tracer_feed_fmt,tracer_mass, &
-       tracer_first_balance_part_per_cell,tracer_first_balance_levelmin,tracer_per_cell, &
-       tracer_level,no_init_gas_tracer,tracer_to_jet
+       tracer_first_balance_part_per_cell,tracer_first_balance_levelmin
   ! MPI initialization
 #ifndef WITHOUTMPI
 #ifdef _OPENMP
@@ -227,24 +226,7 @@ subroutine read_params
      CALL GET_COMMAND_ARGUMENT(2,cmdarg)
      read(cmdarg,*) nrestart
   endif
-  
-  ! check for the most recent nout and restart from it. 
-  if (myid==1 .and. nrestart == -1) then
-     do while(nrestart == -1)
-        call title(nrestart_seek,nchar)
-        info_file='output_'//TRIM(nchar)//'/info_'//TRIM(nchar)//'.txt'
-        INQUIRE(FILE=info_file, EXIST=restart_file_ok)
-        if (restart_file_ok) then
-           nrestart = nrestart_seek
-        else
-           nrestart_seek = nrestart_seek - 1
-        endif
-        if(nrestart_seek <= 0) then
-           nrestart = 0
-        end if
-     enddo
-  endif
-    
+
   if (myid==1 .and. nrestart .gt. 0) then
      call title(nrestart,nchar)
      info_file='output_'//TRIM(nchar)//'/info_'//TRIM(nchar)//'.txt'
@@ -312,11 +294,6 @@ subroutine read_params
   levelmin=MAX(levelmin,1)
   nlevelmax=levelmax
   nlevelmax_current=levelmin
-  if(levelhold>0)then
-     nlevelsheld=nlevelmax-levelhold
-     if(myid==1)write(*,*)'Using an effictive maximum level of',levelhold
-  endif
-
 
   nml_ok=.true.
   if(levelmin<1)then
@@ -329,11 +306,6 @@ subroutine read_params
      if(myid==1)write(*,*)'levelmax should not be lower than levelmin'
      nml_ok=.false.
   end if
-  if(levelhold> nlevelmax)then
-     if(myid==1)write(*,*)'Error in the namelist:'
-     if(myid==1)write(*,*)'levelhold has to be lower than levelmax'
-     nml_ok=.false.
-  endif
 
   if(ngridmax==0)then
      if(ngridtot==0)then

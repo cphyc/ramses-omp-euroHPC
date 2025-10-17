@@ -22,6 +22,8 @@ subroutine backup_part(filename, filename_desc)
   integer :: unit_info, ivar
   logical :: dump_info
 
+  integer :: imet ! ERIC
+
   if (verbose) write(*,*) 'Entering backup_part'
 
   ! Set ivar to 1 for first variable
@@ -174,75 +176,28 @@ subroutine backup_part(filename, filename_desc)
      end do
      call generic_dump("birth_time", ivar, xdp, unit_out, dump_info, unit_info)
 
-     ! Write metallicity
-     if (metal) then
-        ipart = 0
-        do i = 1, npartmax
-           if (levelp(i) > 0) then
-              ipart = ipart+1
-              xdp(ipart) = zp(i)
-           end if
-        end do
-        call generic_dump("metallicity", ivar, xdp, unit_out, dump_info, unit_info)
-     end if
-     ! Write initial mass
-     if(use_initial_mass)then
-        ipart=0
-        do i=1,npartmax
-           if(levelp(i)>0)then
-              ipart=ipart+1
-              xdp(ipart)=mp0(i)
-           end if
-        end do
-        call generic_dump("initial_mass", ivar, xdp, unit_out, dump_info, unit_info)
-     endif
-     ! Write chemistry
-#ifdef NCHEM
-     if (nchem>0) then
-        do ich = 1, nchem
+     ! Write metallicity, EDGE2
+     if (metal.ne.0) then
+        do imet=1,nmetals ! ERIC
            ipart = 0
            do i = 1, npartmax
               if (levelp(i) > 0) then
                  ipart = ipart+1
-                 xdp(ipart) = chp(i,ich)
+                 xdp(ipart) = zp(i,imet)
               end if
            end do
-           call generic_dump("chem_"//TRIM(chem_list(ich)), ivar, xdp, unit_out, dump_info, unit_info)
+           call generic_dump("metal_"//trim(met_keys(imet)), ivar, xdp, unit_out, dump_info, unit_info)
         end do
      end if
-#endif
-     ! BEGIN SD PATCH----------------------------------------------------!SD
-     if(write_stellar_densities) then
-        ! Write gas density at birth
-        ipart=0
-        do i=1,npartmax
-           if(levelp(i)>0)then
-              ipart=ipart+1
-              xdp(ipart)=st_n_tp(i)
-           end if
-        end do
-        call generic_dump("birth_density", ivar, xdp, unit_out, dump_info, unit_info)
-        !        ! Write gas density at SN
-        !        ipart=0
-        !        do i=1,npartmax
-        !           if(levelp(i)>0)then
-        !              ipart=ipart+1
-        !              xdp(ipart)=st_n_SN(i)
-        !           end if
-        !        end do
-        !        call generic_dump("sn_density", ivar, xdp, unit_out, dump_info, unit_info)
-        !        ! Write SN energy injected
-        !        ipart=0
-        !        do i=1,npartmax
-        !           if(levelp(i)>0)then
-        !              ipart=ipart+1
-        !              xdp(ipart)=st_e_SN(i)
-        !           end if
-        !        end do
-        !        call generic_dump("sn_energy", ivar, xdp, unit_out, dump_info, unit_info)
-     endif
-     ! END SD PATCH------------------------------------------------------!SD
-
+     !Write initial mass, EDGE2
+     ipart=0
+     do i=1,npartmax
+        if(levelp(i)>0)then
+           ipart=ipart+1
+           xdp(ipart)=mpb(i)
+        end if
+     end do
+     call generic_dump("birth_mass", ivar, xdp, unit_out, dump_info, unit_info)
      deallocate(xdp)
   end if
 

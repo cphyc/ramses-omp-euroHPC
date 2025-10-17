@@ -12,7 +12,7 @@ subroutine move_fine(ilevel)
   ! If particle sits entirely in level ilevel, then use fine grid force
   ! for CIC interpolation. Otherwise, use coarse grid (ilevel-1) force.
   !----------------------------------------------------------------------
-  integer::igrid,jgrid,ipart,jpart,next_part,ig,ip,local_counter,npart1,isink
+  integer::igrid,jgrid,ipart,jpart,next_part,ig,ip,local_counter,npart1
   integer,dimension(1:nvector)::ind_grid,ind_part,ind_grid_part
 #ifndef WITHOUTMPI
   integer::info
@@ -23,7 +23,6 @@ subroutine move_fine(ilevel)
   type(part_t) :: part_type
 
   !OMP
-  real(dp), dimension(1:nsinkmax,1:ndim*2+1) :: sink_stat_local
   integer, dimension(1:IRandNumSize), save :: ompseed
 !$omp threadprivate(ompseed)
 
@@ -40,18 +39,7 @@ subroutine move_fine(ilevel)
 #endif
     call ranf(tracer_seed,rand)
 
-  ! Set new sink variables to old ones
-  if(sink)then
-!$omp parallel do private(isink)
-     do isink=1,nsinkmax
-        vsink_new(isink,:)=0d0
-        oksink_new(isink)=0d0
-        sink_stat(isink,ilevel,:)=0d0
-        sink_stat_local(isink,:)=0d0
-     end do
-  endif
-
-!$omp parallel private(ig,ip,ind_grid,ind_part,ind_grid_part,igrid,npart1,ipart,local_counter,next_part) reduction(+:sink_stat_local)
+!$omp parallel private(ig,ip,ind_grid,ind_part,ind_grid_part,igrid,npart1,ipart,local_counter,next_part)
   ig=0
   ip=0
 !$omp do schedule(dynamic,nchunk)
@@ -79,7 +67,7 @@ subroutine move_fine(ilevel)
               ind_part(ip)=ipart
               ind_grid_part(ip)=ig
               if(ip==nvector)then
-                 call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel,sink_stat_local)
+                 call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
                  local_counter=0
                  ip=0
                  ig=0
@@ -99,31 +87,8 @@ subroutine move_fine(ilevel)
   end do
 !$omp end do nowait
   ! End loop over grids
-  if(ip>0)call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel,sink_stat_local)
+  if(ip>0)call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
 !$omp end parallel
-
-  !--------------------------------------------------------------------------------
-  ! Moving sinks
-  !--------------------------------------------------------------------------------
-  if(sink)then
-     if(nsink>0)then
-#ifndef WITHOUTMPI
-        call MPI_ALLREDUCE(oksink_new,oksink_all,nsinkmax     ,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-        call MPI_ALLREDUCE(vsink_new ,vsink_all ,nsinkmax*ndim,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-#else
-        oksink_all=oksink_new
-        vsink_all=vsink_new
-#endif
-     endif
-!$omp parallel do private(isink)
-     do isink=1,nsink
-        if(oksink_all(isink)==1d0.and.(.not.fix_smbh_position))then
-           vsink(isink,1:ndim)=vsink_all(isink,1:ndim)
-           xsink(isink,1:ndim)=xsink(isink,1:ndim)+vsink(isink,1:ndim)*dtnew(ilevel)
-        endif
-		sink_stat(isink,ilevel,:)=sink_stat(isink,ilevel,:)+sink_stat_local(isink,:)
-     end do
-  endif
 
   !--------------------------------------------------------------------------------
   ! Moving tracers
@@ -168,7 +133,7 @@ subroutine move_fine(ilevel)
                     xp(ipart, :) = xp(partp(ipart), :)
                     vp(ipart, :) = vp(partp(ipart), :)
                  else if (is_cloud_tracer(part_type)) then
-                    call move_sink_tracer(ipart, ilevel)
+                  !   call move_sink_tracer(ipart, ilevel)
                  end if
 
                  ipart=next_part  ! Go to next particle
@@ -192,51 +157,6 @@ end subroutine move_fine
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine move_sink_tracer(ipart, ilevel)
-  use amr_commons
-  use pm_commons
-  ! Move the sinks
-  integer, intent(in) :: ipart, ilevel
-  real(dp), dimension(1:ndim) :: xtmp, xsink_tmp
-  real(dp) :: d2, dx, twodx
-  integer :: idim
-
-  dx = 0.5**ilevel
-  twodx = 2*dx
-
-  xtmp(:) = xp(ipart, :)
-  xsink_tmp(:) = xsink(partp(ipart), :)
-
-  d2 = 0
-  do idim = 1, ndim
-     d2 = d2 + (xtmp(idim) - xsink_tmp(idim))**2
-  end do
-
-  ! Closeby, moving directly
-  if (d2 < dx**2) then
-     xp(ipart, :) = xsink_tmp(:)
-  else
-     do idim = 1, ndim
-        if (xtmp(idim)+dx < xsink_tmp(idim)) then
-           xtmp(idim) = xtmp(idim) + dx
-        else if (xtmp(idim)-dx > xsink_tmp(idim)) then
-           xtmp(idim) = xtmp(idim) - dx
-        else
-           xtmp(idim) = xsink_tmp(idim)
-        end if
-     end do
-     xp(ipart, :) = xtmp(:)
-  end if
-
-  vp(ipart, :) = vsink(partp(ipart), :)
-
-  ! TODO: there is an issue there when a sink gets close to the
-  ! boundaries, as the code does not take into account periodicity
-end subroutine move_sink_tracer
-!#########################################################################
-!#########################################################################
-!#########################################################################
-!#########################################################################
 subroutine move_fine_static(ilevel)
   use amr_commons
   use pm_commons
@@ -248,22 +168,14 @@ subroutine move_fine_static(ilevel)
   ! If particle sits entirely in level ilevel, then use fine grid force
   ! for CIC interpolation. Otherwise, use coarse grid (ilevel-1) force.
   !----------------------------------------------------------------------
-  integer::igrid,jgrid,ipart,jpart,next_part,ig,ip,local_counter,npart1,npart2,isink
+  integer::igrid,jgrid,ipart,jpart,next_part,ig,ip,local_counter,npart1,npart2
   integer,dimension(1:nvector),save::ind_grid,ind_part,ind_grid_part
 #ifndef WITHOUTMPI
   integer::info
 #endif
-  real(dp), dimension(1:nsinkmax,1:ndim*2+1) :: sink_stat_local
 
   if(numbtot(1,ilevel)==0)return
   if(verbose)write(*,111)ilevel
-
-  ! Set new sink variables to old ones
-  if(sink)then
-     vsink_new=0d0
-     oksink_new=0d0
-     sink_stat(:,ilevel,:)=0d0
-  endif
 
   ! Update particles position and velocity
   ig=0
@@ -323,7 +235,7 @@ subroutine move_fine_static(ilevel)
                  ind_part(ip)=ipart
                  ind_grid_part(ip)=ig
                  if(ip==nvector) then
-                    call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel,sink_stat_local)
+                    call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
                     local_counter=0
                     ip=0
                     ig=0
@@ -340,7 +252,7 @@ subroutine move_fine_static(ilevel)
                  ind_part(ip)=ipart
                  ind_grid_part(ip)=ig
                  if(ip==nvector) then
-                    call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel,sink_stat_local)
+                    call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
                     local_counter=0
                     ip=0
                     ig=0
@@ -360,26 +272,7 @@ subroutine move_fine_static(ilevel)
      igrid=next(igrid)   ! Go to next grid
   end do
   ! End loop over grids
-  if(ip>0)call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel,sink_stat_local)
-
-  if(sink)then
-     if(nsink>0)then
-#ifndef WITHOUTMPI
-        call MPI_ALLREDUCE(oksink_new,oksink_all,nsinkmax     ,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-        call MPI_ALLREDUCE(vsink_new ,vsink_all ,nsinkmax*ndim,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-#else
-        oksink_all=oksink_new
-        vsink_all=vsink_new
-#endif
-     endif
-     do isink=1,nsink
-        if(oksink_all(isink)==1d0.and.(.not.fix_smbh_position))then
-           vsink(isink,1:ndim)=vsink_all(isink,1:ndim)
-           xsink(isink,1:ndim)=xsink(isink,1:ndim)+vsink(isink,1:ndim)*dtnew(ilevel)
-        endif
-		sink_stat(isink,ilevel,:)=sink_stat(isink,ilevel,:)+sink_stat_local(isink,:)
-     end do
-  endif
+  if(ip>0)call move1(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
 
 111 format('   Entering move_fine_static for level ',I2)
 
@@ -388,7 +281,7 @@ end subroutine move_fine_static
 !#########################################################################
 !#########################################################################
 !#########################################################################
-subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,sink_stat_local)
+subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
   use amr_commons
   use pm_commons
   use poisson_commons
@@ -406,7 +299,7 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,sink_stat_local)
   ! This routine is called by move_fine.
   !------------------------------------------------------------
   logical::error
-  integer::i,j,ind,idim,nx_loc,isink
+  integer::i,j,ind,idim,nx_loc
   real(dp)::dx,dx_loc,scale,vol_loc
   ! Grid-based arrays
   integer ,dimension(1:nvector)::father_cell
@@ -428,8 +321,6 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,sink_stat_local)
 
   ! Family
   logical,dimension(1:nvector) :: classical_tracer
-
-  real(dp), dimension(1:nsinkmax,1:ndim*2+1) :: sink_stat_local
 
   ! Conversion factor from user units to cgs units
   call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
@@ -722,18 +613,6 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,sink_stat_local)
      endif
   end do
 
-  ! For sink cloud particle, overwrite velocity with sink velocity
-  if(sink)then
-     do j=1,np
-        if( is_cloud(typep(ind_part(j))) ) then
-           isink=-idp(ind_part(j))
-           do idim=1,ndim
-              new_vp(j,idim)=vsink(isink,idim)+ff(j,idim)*0.5D0*dtnew(ilevel)
-           end do
-        end if
-     end do
-  end if
-
   ! Store velocity
   do idim=1,ndim
      do j=1,np
@@ -741,31 +620,6 @@ subroutine move1(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,sink_stat_local)
      end do
   end do
 
-  ! Update sink particle velocity using closest cloud particle
-  if(sink)then
-     do j=1,np
-        if( is_cloud(typep(ind_part(j)))) then
-           isink=-idp(ind_part(j))
-           !Central cloud particle has tag 0
-           if(is_central_cloud(typep(ind_part(j))))then
-              vsink_new(isink,1:ndim)=vp(ind_part(j),1:ndim)
-              oksink_new(isink)=1.0
-           endif
-           sink_stat_local(isink,ndim*2+1)=sink_stat_local(isink,ndim*2+1)+1d0
-           do idim=1,ndim
-              xx=xp(ind_part(j),idim)+vp(ind_part(j),idim)*dtnew(ilevel)-xsink(isink,idim)
-              if(xx>scale*xbound(idim)/2.0)then
-                 xx=xx-scale*xbound(idim)
-              endif
-              if(xx<-scale*xbound(idim)/2.0)then
-                 xx=xx+scale*xbound(idim)
-              endif
-              sink_stat_local(isink,idim     )=sink_stat_local(isink,idim     )+xsink(isink,idim)+xx
-              sink_stat_local(isink,idim+ndim)=sink_stat_local(isink,idim+ndim)+vp(ind_part(j),idim)
-           enddo
-       endif
-     end do
-  end if
 
   ! Update position
   do idim=1,ndim

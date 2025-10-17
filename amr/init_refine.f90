@@ -24,7 +24,7 @@ subroutine init_refine
   end do
 
   ! Further refinements if necessary
-  do ilevel=levelmin+1,(nlevelmax-nlevelsheld)
+  do ilevel=levelmin+1,nlevelmax
      if(initfile(levelmin).ne.' '.and.initfile(ilevel).eq.' ')exit
      if(hydro)call init_flow
 #ifdef RT
@@ -79,7 +79,7 @@ subroutine init_refine_2
      write(*,'(A50)')"__________________________________________________"
   end if
 #endif
-  do i=levelmin,(nlevelmax+1-nlevelsheld)
+  do i=levelmin,nlevelmax+1
 #ifdef DICE
      ! DICE------
      do ilevel=levelmin-1,1,-1
@@ -88,7 +88,7 @@ subroutine init_refine_2
      ! ----------
 #endif
      call refine_coarse
-     do ilevel=1,(nlevelmax-nlevelsheld)
+     do ilevel=1,nlevelmax
         call build_comm(ilevel)
         call make_virtual_fine_int(cpu_map(1),ilevel)
         call refine_fine(ilevel)

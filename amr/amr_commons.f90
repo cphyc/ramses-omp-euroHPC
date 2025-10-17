@@ -37,6 +37,9 @@ module amr_commons
   integer::ncpu,ndomain,myid,overload=1
   integer::nthr=1  ! OpenMP number of threads
 
+  !SN and SF diagnostics
+  integer :: SNunit_out,SFunit_out
+
   ! Friedman model variables
   integer::n_frw
   real(dp),allocatable,dimension(:)::aexp_frw,hexp_frw,tau_frw,t_frw

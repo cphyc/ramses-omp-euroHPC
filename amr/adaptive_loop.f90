@@ -4,7 +4,6 @@ subroutine adaptive_loop
   use pm_commons
   use poisson_commons
   use cooling_module
-  use tracer_utils
 #ifdef RT
   use rt_hydro_commons
 #endif
@@ -13,14 +12,11 @@ subroutine adaptive_loop
 #ifndef WITHOUTMPI
   integer(kind=8)::n_step
   integer::info,tot_pt
-  integer::i,ncell
-  real(kind=8)::tt1,tt2,muspt,muspt_this_step,wallsec,dumpsec,stopsec
+  real(kind=8)::tt1,tt2,muspt,muspt_this_step,wallsec,dumpsec
   real(kind=4)::real_mem,real_mem_tot
+  real(kind=8),save::tstart=0
 #endif
-  character(len=1000)::filename
-  logical::ic_sink=.false.
-  integer::ilevel,idim,ivar
-  character(LEN=80)::str
+  integer::ilevel,idim,ivar,i,ncell
 
 #ifndef WITHOUTMPI
   tt1=MPI_WTIME()
@@ -41,7 +37,6 @@ subroutine adaptive_loop
 #ifdef ATON
   if(aton)call init_radiation        ! Initialize radiation variables
 #endif
-  if(mechanical_feedback) call init_mechanical
   if(nrestart==0)call init_refine    ! Build initial AMR grid
 
 #ifdef grackle
@@ -55,31 +50,10 @@ subroutine adaptive_loop
 #endif
   if(pic)call init_part              ! Initialize particle variables
   if(pic)call init_tree              ! Initialize particle tree
-  !HP: create cloud from ic_sink (care with units)
-  if (sink)then
-     if (nrestart == 0) then
-        if(TRIM(initfile(levelmin)).NE.' ')then
-           filename=TRIM(initfile(levelmin))//'/ic_sink'
-        else
-           filename='ic_sink'
-        end if
-     else
-        if(TRIM(initfile(levelmin)).NE.' ')then
-           filename=TRIM(initfile(levelmin))//'/ic_sink_restart'
-        else
-           filename='ic_sink_restart'
-        end if
-        inquire(file=filename, exist=ic_sink)
-        if (ic_sink) then
-           if (myid==1) write (*,*) 'Wait for sink cloud creation'
-           call create_cloud_from_sink
-        end if
-     end if
-  end if
   if(nrestart==0)call init_refine_2  ! Build initial AMR grid again
 
 #ifndef WITHOUTMPI
-  muspt=0.
+  muspt=0
   tot_pt=-1
   tt2=MPI_WTIME()
   if(myid==1)write(*,*)'Time elapsed since startup:',tt2-tt1
@@ -92,12 +66,14 @@ subroutine adaptive_loop
      end do
   end if
 
-  do ilevel=1,nlevelmax
-     if((nlevelmax_current.le.ilevel).and.(numbtot(1,ilevel)>0))then
-        nlevelmax_current = ilevel
-     end if
-  end do
   nstep_coarse_old=nstep_coarse
+
+  if(SFdiagnostics)then
+     write(SFunit_out,'("# LOGS OPENED AT: fine step = ",I7,",  t = ",E12.5,",  aexp = ",E10.3)')nstep,t,aexp
+  endif
+  if(SNdiagnostics)then
+     write(SNunit_out,'("# LOGS OPENED AT: fine step = ",I7,",  t = ",E12.5,",  aexp = ",E10.3)')nstep,t,aexp
+  endif
 
   if(myid==1)write(*,*)'Starting time integration'
 
@@ -136,7 +112,9 @@ subroutine adaptive_loop
 #else
               end do
 #endif
-              if(momentum_feedback)call make_virtual_fine_dp(pstarold(1),ilevel)
+              if(momentum_feedback>0)call make_virtual_fine_dp(pstarold(1),ilevel)
+              if(strict_equilibrium>0)call make_virtual_fine_dp(rho_eq(1),ilevel)
+              if(strict_equilibrium>0)call make_virtual_fine_dp(p_eq(1),ilevel)
               if(simple_boundary)call make_boundary_hydro(ilevel)
            endif
 #ifdef RT
@@ -167,7 +145,6 @@ subroutine adaptive_loop
         end do
      end if
 
-     ! ========= !
      ! Call base level
      call amr_step(levelmin,1)
                                call timer('coarse levels','start')
@@ -188,7 +165,9 @@ subroutine adaptive_loop
 #else
               end do
 #endif
-              if(momentum_feedback)call make_virtual_fine_dp(pstarold(1),ilevel)
+              if(momentum_feedback>0)call make_virtual_fine_dp(pstarold(1),ilevel)
+              if(strict_equilibrium>0)call make_virtual_fine_dp(rho_eq(1),ilevel)
+              if(strict_equilibrium>0)call make_virtual_fine_dp(p_eq(1),ilevel)
               if(simple_boundary)call make_boundary_hydro(ilevel)
            end if
 #ifdef RT
@@ -226,7 +205,7 @@ subroutine adaptive_loop
         call getmem(real_mem)
         call MPI_ALLREDUCE(real_mem,real_mem_tot,1,MPI_REAL,MPI_MAX,MPI_COMM_WORLD,info)
         if(myid==1)then
-           if (tot_pt==0) muspt=0. ! dont count first timestep
+           if (tot_pt==0) muspt=0 ! dont count first timestep
            n_step = int(numbtot(1,levelmin),kind=8)*twotondim
            do ilevel=levelmin+1,nlevelmax
              n_step = n_step + int(numbtot(1,ilevel),kind=8)*product(nsubcycle(levelmin:ilevel-1))*(twotondim-1)
@@ -240,26 +219,16 @@ subroutine adaptive_loop
            call writemem(real_mem_tot)
            write(*,*)'Total running time:', NINT((tt2-tstart)*100.0)*0.01,'s'
         endif
-        if(walltime_hrs>0d0) then
-           wallsec = walltime_hrs*3600.     ! Convert from hours to seconds
-           dumpsec = minutes_dump*60.       ! Convert minutes before end to seconds
-           stopsec = early_stop_hrs*3600.
-           if(wallsec-dumpsec<tt2-tstart) then
+        if(walltime_hrs.gt.0d0) then
+           wallsec = walltime_hrs*3600     ! Convert from hours to seconds
+           dumpsec = minutes_dump*60       ! Convert minutes before end to seconds
+           if(wallsec-dumpsec.lt.tt2-tstart) then
               output_now=.true.
               if(myid==1) write(*,*) 'Dumping snapshot before walltime runs out'
               ! Now set walltime to a negative number so we don't keep printing outputs
               walltime_hrs = -1d0
            endif
-           if(wallsec-stopsec<tt2-tstart) then
-              stop_next=.true.
-              if(myid==1) write(*,*) 'The run will stop at next scheduled dump'
-           endif
         endif
-        if(wallstep>0 .and. nstep_coarse-nstep_coarse_start>=wallstep) then
-           output_now=.true.
-           if(myid==1) write(*,*) 'Dumping snapshot at wallstep'
-           wallstep=-1
-        end if
      endif
 #endif
 

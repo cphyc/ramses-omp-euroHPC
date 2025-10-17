@@ -14,15 +14,12 @@ subroutine synchro_fine(ilevel)
   ! the force. Otherwise, use coarse level force and coarse level CIC.
   !--------------------------------------------------------------------
   integer::igrid,jgrid,ipart,jpart
-  integer::ig,ip,npart1,isink,local_counter
+  integer::ig,ip,npart1,local_counter
   integer,dimension(1:nvector)::ind_grid,ind_part,ind_grid_part
 
   if(numbtot(1,ilevel)==0)return
   if(verbose)write(*,111)ilevel
 
-  if(sink)then
-     vsink_new=0d0; oksink_new=0d0
-  endif
 
   ! Synchronize velocity using CIC
 !$omp parallel private(ig,ip,ind_grid,ind_part,ind_grid_part,igrid,npart1,ipart,local_counter)
@@ -75,24 +72,6 @@ subroutine synchro_fine(ilevel)
   if(ip>0)call sync(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
 !$omp end parallel
 
-  if(sink)then
-     if(nsink>0)then
-#ifndef WITHOUTMPI
-        call MPI_ALLREDUCE(oksink_new,oksink_all,nsinkmax     ,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-        call MPI_ALLREDUCE(vsink_new ,vsink_all ,nsinkmax*ndim,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-#else
-        oksink_all=oksink_new
-        vsink_all=vsink_new
-#endif
-     endif
-!$omp parallel do
-     do isink=1,nsink
-        if(oksink_all(isink)==1d0.and.(.not.fix_smbh_position))then
-           vsink(isink,1:ndim)=vsink_all(isink,1:ndim)
-        end if
-     end do
-  endif
-
 111 format('   Entering synchro_fine for level ',I2)
 
 end subroutine synchro_fine
@@ -116,16 +95,12 @@ subroutine synchro_fine_static(ilevel)
   ! the force. Otherwise, use coarse level force and coarse level CIC.
   !--------------------------------------------------------------------
   integer::igrid,jgrid,ipart,jpart
-  integer::ig,ip,next_part,npart1,npart2,isink
+  integer::ig,ip,next_part,npart1,npart2
   integer,dimension(1:nvector),save::ind_grid,ind_part,ind_grid_part
 
   if(numbtot(1,ilevel)==0)return
   if(verbose)write(*,111)ilevel
 
-  ! Set new sink variables to old ones
-  if(sink)then
-     vsink_new=0d0; oksink_new=0d0
-  endif
 
   ! Synchronize velocity using CIC
   ig=0
@@ -206,23 +181,6 @@ subroutine synchro_fine_static(ilevel)
   if(ip>0)call sync(ind_grid,ind_part,ind_grid_part,ig,ip,ilevel)
 
 
-  if(sink)then
-     if(nsink>0)then
-#ifndef WITHOUTMPI
-        call MPI_ALLREDUCE(oksink_new,oksink_all,nsinkmax     ,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-        call MPI_ALLREDUCE(vsink_new ,vsink_all,nsinkmax*ndim,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
-#else
-        oksink_all=oksink_new
-        vsink_all=vsink_new
-#endif
-     endif
-     do isink=1,nsink
-        if (oksink_all(isink)==1d0)then
-           vsink(isink,1:ndim)=vsink_all(isink,1:ndim)
-        end if
-     end do
-  endif
-
 111 format('   Entering synchro_fine_static for level ',I2)
 
 end subroutine synchro_fine_static
@@ -243,7 +201,7 @@ subroutine sync(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
   !
   !
   logical::error
-  integer::i,j,ind,idim,nx_loc,isink
+  integer::i,j,ind,idim,nx_loc
   real(dp)::dx,scale
   ! Grid-based arrays
   real(dp),dimension(1:nvector,1:ndim)::x0
@@ -540,17 +498,5 @@ subroutine sync(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
         vp(ind_part(j),idim)=new_vp(j,idim)
      end do
   end do
-
-  ! Update sink particle velocity using closest cloud particle
-  if(sink)then
-     do j=1,np
-        !OMPNOTE: just once for isink, no need to be atomic
-        if ( is_central_cloud(typep(ind_part(j))))then
-           isink=-idp(ind_part(j))
-           vsink_new(isink,1:ndim)=vp(ind_part(j),1:ndim)
-           oksink_new(isink)=1.0
-        endif
-     end do
-  end if
 
 end subroutine sync

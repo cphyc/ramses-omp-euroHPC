@@ -29,6 +29,7 @@ subroutine hydro_flag(ilevel)
   real(dp),dimension(1:nvector,1:nvar)::uug,uum,uud
 #endif
 
+  if(ilevel==nlevelmax)return
   if(numbtot(1,ilevel)==0)return
 
   ! Rescaling factors
@@ -103,63 +104,61 @@ subroutine hydro_flag(ilevel)
            ok(i)=.false.
         end do
 
-        !Refine if higher refinement levels are permitted
-        if(ilevel<(nlevelmax-nlevelsheld))then
-           ! Gather neighboring cells
-           call getnborcells(igridn,ind,indn,ngrid)
+        ! Gather neighboring cells
+        call getnborcells(igridn,ind,indn,ngrid)
 
-           ! If a neighbor cell does not exist,
-           ! replace it by its father cell
-           do j=1,twondim
+        ! If a neighbor cell does not exist,
+        ! replace it by its father cell
+        do j=1,twondim
+           do i=1,ngrid
+              if(indn(i,j)==0)then
+                 indn(i,j)=nbor(ind_grid(i),j)
+              end if
+           end do
+        end do
+
+        ! Loop over dimensions
+        do idim=1,ndim
+           ! Gather hydro variables
+#ifdef SOLVERmhd
+           do ivar=1,nvar+3
+#else
+           do ivar=1,nvar
+#endif
               do i=1,ngrid
-                 if(indn(i,j)==0)then
-                    indn(i,j)=nbor(ind_grid(i),j)
-                 end if
+                 uug(i,ivar)=uold(indn(i,2*idim-1),ivar)
+                 uum(i,ivar)=uold(ind_cell(i     ),ivar)
+                 uud(i,ivar)=uold(indn(i,2*idim  ),ivar)
               end do
            end do
-
-           ! Loop over dimensions
-           do idim=1,ndim
-              ! Gather hydro variables
 #ifdef SOLVERmhd
-              do ivar=1,nvar+3
+           call hydro_refine(uug,uum,uud,ok,ngrid,ilevel)
 #else
-              do ivar=1,nvar
+           call hydro_refine(uug,uum,uud,ok,ngrid)
 #endif
-                 do i=1,ngrid
-                    uug(i,ivar)=uold(indn(i,2*idim-1),ivar)
-                    uum(i,ivar)=uold(ind_cell(i     ),ivar)
-                    uud(i,ivar)=uold(indn(i,2*idim  ),ivar)
-                 end do
-              end do
-#ifdef SOLVERmhd
-              call hydro_refine(uug,uum,uud,ok,ngrid,ilevel)
-#else
-              call hydro_refine(uug,uum,uud,ok,ngrid)
-#endif
-           end do
+        end do
 
-           if(poisson.and.jeans_refine(ilevel)>0.0)then
-              call jeans_length_refine(ind_cell,ok,ngrid,ilevel)
-           endif
-
-           ! Apply geometry-based refinement criteria
-           if(r_refine(ilevel)>-1.0)then
-              ! Compute cell center in code units
-              do idim=1,ndim
-                 do i=1,ngrid
-                    xx(i,idim)=xg(ind_grid(i),idim)+xc(ind,idim)
-                 end do
-              end do
-              ! Rescale position from code units to user units
-              do idim=1,ndim
-                 do i=1,ngrid
-                    xx(i,idim)=(xx(i,idim)-skip_loc(idim))*scale
-                 end do
-              end do
-              call geometry_refine(xx,ok,ngrid,ilevel)
-           end if
+        if(poisson.and.jeans_refine(ilevel)>0.0)then
+           call jeans_length_refine(ind_cell,ok,ngrid,ilevel)
         endif
+
+        ! Apply geometry-based refinement criteria
+        if(r_refine(ilevel)>-1.0)then
+           ! Compute cell center in code units
+           do idim=1,ndim
+              do i=1,ngrid
+                 xx(i,idim)=xg(ind_grid(i),idim)+xc(ind,idim)
+              end do
+           end do
+           ! Rescale position from code units to user units
+           do idim=1,ndim
+              do i=1,ngrid
+                 xx(i,idim)=(xx(i,idim)-skip_loc(idim))*scale
+              end do
+           end do
+           call geometry_refine(xx,ok,ngrid,ilevel)
+        end if
+
         ! Count newly flagged cells
         nok=0
         do i=1,ngrid
@@ -171,6 +170,7 @@ subroutine hydro_flag(ilevel)
         do i=1,ngrid
            if(ok(i))flag1(ind_cell(i))=1
         end do
+
         nflag=nflag+nok
      end do
      ! End loop over cells
@@ -188,7 +188,7 @@ subroutine jeans_length_refine(ind_cell,ok,ncell,ilevel)
   use pm_commons
   use hydro_commons
   use poisson_commons
-  use cooling_module, ONLY: twopi, XH=>X, rhoc, mH
+  use constants, only: pi
   implicit none
   integer::ncell,ilevel
   integer,dimension(1:nvector)::ind_cell
@@ -199,67 +199,54 @@ subroutine jeans_length_refine(ind_cell,ok,ncell,ilevel)
   ! P. Hennebelle 03/11/2005
   !-------------------------------------------------
   integer::i,indi
-  real(dp)::lamb_jeans,tail_pix,pi,n_jeans
-  real(dp)::dens,tempe,etherm,factG,dthres
-  real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
-
+  real(dp)::lamb_jeans,tail_pix,n_jeans
+  real(dp)::dens,tempe,etherm,factG
 #if NENER>0
   integer::irad
 #endif
 #ifdef SOLVERmhd
   real(dp)::emag
 #endif
-
-  ! Conversion factor from user units to cgs units
-  call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
-
-  pi = twopi / 2.
   factG=1
   if(cosmo)factG=3d0/8d0/pi*omega_m*aexp
   n_jeans = jeans_refine(ilevel)
   ! compute the size of the pixel
-  tail_pix = boxlen / (2.d0)**ilevel
-  dthres = dens_jeans/scale_nH
-  if(cosmo .and. del_jeans>0)then
-     dthres = del_jeans*omega_b*rhoc*(h0/100.)**2/aexp**3*XH/mH / scale_nH
-  endif
-
+  tail_pix = boxlen / (2d0)**ilevel
   do i=1,ncell
      indi = ind_cell(i)
      ! the thermal energy
      dens = max(uold(indi,1),smallr)
-     if(dens .ge. dthres)then
-        etherm = uold(indi,ndim+2)
-        etherm = etherm - 0.5d0*uold(indi,2)**2/dens
+     etherm = uold(indi,ndim+2)
+     etherm = etherm - 0.5d0*uold(indi,2)**2/dens
 #if NDIM > 1 || SOLVERmhd
-        etherm = etherm - 0.5d0*uold(indi,3)**2/dens
+     etherm = etherm - 0.5d0*uold(indi,3)**2/dens
 #endif
 #if NDIM > 2 || SOLVERmhd
-        etherm = etherm - 0.5d0*uold(indi,4)**2/dens
+     etherm = etherm - 0.5d0*uold(indi,4)**2/dens
 #endif
 #ifdef SOLVERmhd
-        ! the magnetic energy
-        emag =        (uold(indi,6)+uold(indi,nvar+1 ))**2
-        emag = emag + (uold(indi,7)+uold(indi,nvar+2))**2
-        emag = emag + (uold(indi,8)+uold(indi,nvar+3))**2
-        emag = emag / 8.d0
-        etherm = (etherm - emag)
+     ! the magnetic energy
+     emag =        (uold(indi,6)+uold(indi,nvar+1 ))**2
+     emag = emag + (uold(indi,7)+uold(indi,nvar+2))**2
+     emag = emag + (uold(indi,8)+uold(indi,nvar+3))**2
+     emag = emag / 8d0
+     etherm = (etherm - emag)
 #endif
 #if NENER>0
-        do irad=1,nener
-           etherm=etherm-uold(indi,ndim+2+irad)
-        end do
+     do irad=1,nener
+        etherm=etherm-uold(indi,ndim+2+irad)
+     end do
 #endif
-        ! the temperature
-        tempe =  etherm / dens * (gamma -1.0)
-        ! prevent numerical crash due to negative temperature
-        tempe = max(tempe,smallc**2)
-        ! compute the Jeans length (remember G=1)
-        lamb_jeans = sqrt( tempe * pi / dens / factG )
-        ! the Jeans length must be smaller
-        ! than n_jeans times the size of the pixel
-        ok(i) = ok(i) .or. ( n_jeans*tail_pix >= lamb_jeans )
-     endif
+     ! the temperature
+     tempe =  etherm / dens * (gamma - 1.0d0)
+     ! prevent numerical crash due to negative temperature
+     tempe = max(tempe,smallc**2)
+     ! compute the Jeans length (remember G=1)
+     lamb_jeans = sqrt( tempe * pi / dens / factG )
+     ! the Jeans length must be smaller
+     ! than n_jeans times the size of the pixel
+     ok(i) = ok(i) .or. ( n_jeans*tail_pix >= lamb_jeans )
   end do
 
 end subroutine jeans_length_refine
+

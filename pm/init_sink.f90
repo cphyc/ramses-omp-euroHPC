@@ -2,9 +2,8 @@ subroutine init_sink
   use amr_commons
   use pm_commons
   use clfind_commons
-#ifdef RT
-  use rt_parameters,only: rt_AGN, nGroups
-#endif
+  use amr_parameters, only:levelmin
+  use constants, only:M_sun
   use mpi_mod
   implicit none
 #ifndef WITHOUTMPI
@@ -12,285 +11,192 @@ subroutine init_sink
   integer::dummy_io,info2
 #endif
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
-  integer::idim,ilevel
-  integer::isink,itype
-  integer::ilun
-  integer::nsinkold,nsinknew
-  real(dp)::xx1,xx2,xx3,vv1,vv2,vv3,mm1,ll1,ll2,ll3
-  real(dp),allocatable,dimension(:)::xdp
-  integer,allocatable,dimension(:)::isp
-  logical::ic_sink=.false.
+  integer::isink, nsinkold
+  logical::eof,ic_sink=.false.
   character(LEN=80)::filename
   character(LEN=80)::fileloc
   character(LEN=5)::nchar,ncharcpu
 
-  allocate(total_volume(1:nsinkmax))
-  allocate(wdens(1:nsinkmax))
-  allocate(wvol(1:nsinkmax))
-  allocate(wmom(1:nsinkmax,1:ndim))
-  allocate(wc2(1:nsinkmax))
-  allocate(wdens_new(1:nsinkmax))
-  allocate(wvol_new(1:nsinkmax))
-  allocate(wmom_new(1:nsinkmax,1:ndim))
-  allocate(wc2_new(1:nsinkmax))
-  allocate(msink(1:nsinkmax))
-  allocate(msink_new(1:nsinkmax))
-  allocate(msink_all(1:nsinkmax))
+  integer::sid,slevel
+  real(dp)::sm1,sx1,sx2,sx3,sv1,sv2,sv3,sl1,sl2,sl3
+  real(dp)::stform,sacc_rate,sacc_mass,srho_gas,sc2_gas,seps_sink,svg1,svg2,svg3,sm2
+  character::co
+  character(LEN=200)::comment_line
+
+  ! Allocate all sink related quantities...
   allocate(idsink(1:nsinkmax))
-  ! Important to set nindsink
-  idsink=0
-  allocate(idsink_new(1:nsinkmax))
-  allocate(idsink_all(1:nsinkmax))
+  idsink=0 ! Important: need to set idsink to zero
+  allocate(msink(1:nsinkmax))
+  allocate(msmbh(1:nsinkmax))
+  allocate(xsink(1:nsinkmax,1:ndim))
+  msink=0d0; msmbh=0d0; xsink=boxlen/2
+
+  allocate(xsink_graddescent(1:nsinkmax,1:ndim))
+  allocate(graddescent_over_dt(1:nsinkmax))
+  xsink_graddescent=0d0; graddescent_over_dt=0d0
+  allocate(vsink(1:nsinkmax,1:ndim))
+  allocate(lsink(1:nsinkmax,1:ndim))
+  allocate(delta_mass(1:nsinkmax))
+
   allocate(tsink(1:nsinkmax))
+  allocate(vsold(1:nsinkmax,1:ndim,levelmin:nlevelmax))
+  allocate(vsnew(1:nsinkmax,1:ndim,levelmin:nlevelmax))
+  allocate(fsink_partial(1:nsinkmax,1:ndim,levelmin:nlevelmax))
+  allocate(fsink(1:nsinkmax,1:ndim))
+  vsink=0d0; lsink=0d0; tsink=0d0; vsold=0d0; vsnew=0d0
+  delta_mass=0d0; fsink_partial=0d0; fsink=0d0
+  
+  allocate(msum_overlap(1:nsinkmax))
+  allocate(rho_sink_tff(levelmin:nlevelmax))
+  msum_overlap=0; rho_sink_tff=0d0
+
+  ! Temporary sink variables
+  allocate(wden(1:nsinkmax))
+  allocate(wmom(1:nsinkmax,1:ndim))
+  allocate(weth(1:nsinkmax))
+  allocate(wvol(1:nsinkmax))
+  allocate(wdiv(1:nsinkmax))
+  allocate(wden_new(1:nsinkmax))
+  allocate(wmom_new(1:nsinkmax,1:ndim))
+  allocate(weth_new(1:nsinkmax))
+  allocate(wvol_new(1:nsinkmax))
+  allocate(wdiv_new(1:nsinkmax))
+  wden=0d0; wmom=0d0; weth=0d0; wvol=0d0; wdiv=0d0
+  wden_new=0d0; wmom_new=0d0; weth_new=0d0; wvol_new=0d0; wdiv_new=0d0
+  allocate(msink_new(1:nsinkmax))
+  allocate(msmbh_new(1:nsinkmax))
+  allocate(msmbh_all(1:nsinkmax))
+  allocate(msink_all(1:nsinkmax))
   allocate(tsink_new(1:nsinkmax))
   allocate(tsink_all(1:nsinkmax))
-  allocate(vsink(1:nsinkmax,1:ndim))
-  allocate(xsink(1:nsinkmax,1:ndim))
+  allocate(idsink_new(1:nsinkmax))
+  allocate(idsink_all(1:nsinkmax))
+  allocate(idsink_old(1:nsinkmax))
   allocate(vsink_new(1:nsinkmax,1:ndim))
   allocate(vsink_all(1:nsinkmax,1:ndim))
+  allocate(fsink_new(1:nsinkmax,1:ndim))
+  allocate(fsink_all(1:nsinkmax,1:ndim))
+  allocate(lsink_new(1:nsinkmax,1:ndim))
+  allocate(lsink_all(1:nsinkmax,1:ndim))
   allocate(xsink_new(1:nsinkmax,1:ndim))
   allocate(xsink_all(1:nsinkmax,1:ndim))
+  allocate(sink_jump(1:nsinkmax,1:ndim,levelmin:nlevelmax))
+  sink_jump=0d0
+  allocate(dMsink_overdt(1:nsinkmax))
   allocate(dMBHoverdt(1:nsinkmax))
-  allocate(dMEdoverdt(1:nsinkmax))
-  allocate(r2sink(1:nsinkmax))
-  allocate(r2k(1:nsinkmax))
-  allocate(v2sink(1:nsinkmax))
+  allocate(dMsmbh_overdt(1:nsinkmax))
+  allocate(dMBHoverdt_smbh(1:nsinkmax))
+  dMsink_overdt=0d0; dMBHoverdt=0d0; dMsmbh_overdt=0d0; dMBHoverdt_smbh=0d0
+  allocate(eps_sink(1:nsinkmax))
+  allocate(volume_gas(1:nsinkmax))
+  allocate(vel_gas(1:nsinkmax,1:ndim))
+  allocate(rho_gas(1:nsinkmax))
   allocate(c2sink(1:nsinkmax))
-  allocate(v2sink_new(1:nsinkmax))
-  allocate(c2sink_new(1:nsinkmax))
-  allocate(v2sink_all(1:nsinkmax))
-  allocate(c2sink_all(1:nsinkmax))
+  eps_sink=0d0; volume_gas=0d0; vel_gas=0d0; rho_gas=0d0; c2sink=0d0
   allocate(weighted_density(1:nsinkmax,1:nlevelmax))
-  allocate(weighted_volume (1:nsinkmax,1:nlevelmax))
+  allocate(weighted_volume(1:nsinkmax,1:nlevelmax))
+  allocate(weighted_ethermal(1:nsinkmax,1:nlevelmax))
   allocate(weighted_momentum(1:nsinkmax,1:nlevelmax,1:ndim))
-  allocate(weighted_c2 (1:nsinkmax,1:nlevelmax))
+  allocate(weighted_divergence(1:nsinkmax,1:nlevelmax))
+  weighted_density = 0d0; weighted_volume = 0d0; weighted_ethermal = 0d0
+  weighted_momentum = 0d0; weighted_divergence = 0d0
   allocate(oksink_new(1:nsinkmax))
   allocate(oksink_all(1:nsinkmax))
-  allocate(jsink(1:nsinkmax,1:ndim))
-  allocate(jsink_new(1:nsinkmax,1:ndim))
-  allocate(jsink_all(1:nsinkmax,1:ndim))
-  allocate(dMBH_coarse    (1:nsinkmax))
-  allocate(dMEd_coarse    (1:nsinkmax))
-  allocate(dMsmbh         (1:nsinkmax))
-  allocate(Esave          (1:nsinkmax))
-  allocate(Efeed          (1:nsinkmax))  !Feedback energy during a given feedback event, collected to be written to file
-  allocate(dMBH_coarse_new(1:nsinkmax))
-  allocate(dMEd_coarse_new(1:nsinkmax))
-  allocate(dMsmbh_new     (1:nsinkmax))
-  allocate(Esave_new      (1:nsinkmax))
-  allocate(Efeed_new      (1:nsinkmax))
-  allocate(dMBH_coarse_all(1:nsinkmax))
-  allocate(dMEd_coarse_all(1:nsinkmax))
-  allocate(dMsmbh_all     (1:nsinkmax))
-  allocate(Esave_all      (1:nsinkmax))
-  allocate(Efeed_all      (1:nsinkmax))
-  allocate(sink_stat      (1:nsinkmax,levelmin:nlevelmax,1:ndim*2+1))
-  allocate(sink_stat_all  (1:nsinkmax,levelmin:nlevelmax,1:ndim*2+1))
-  allocate(v_avgptr(1:nsinkmax))
-  allocate(c_avgptr(1:nsinkmax))
-  allocate(d_avgptr(1:nsinkmax))
-  allocate(spinmag(1:nsinkmax),bhspin(1:nsinkmax,1:ndim))
-  allocate(spinmag_new(1:nsinkmax),bhspin_new(1:nsinkmax,1:ndim))
-  allocate(spinmag_all(1:nsinkmax),bhspin_all(1:nsinkmax,1:ndim))
-  allocate(eps_sink(1:nsinkmax))
-
-  ! Initialize all to 0
-  total_volume=0; wdens=0; wvol=0; wmom=0; wc2=0; wdens_new=0; wvol_new=0; wmom_new=0
-  wc2_new=0; msink=0; msink_new=0; msink_all=0; idsink=0; idsink_new=0; idsink_all=0
-  tsink=0; tsink_new=0; tsink_all=0; vsink=0; xsink=0; vsink_new=0; vsink_all=0; xsink_new=0
-  xsink_all=0; dMBHoverdt=0; dMEdoverdt=0; r2sink=0; r2k=0; v2sink=0; c2sink=0; v2sink_new=0;
-  c2sink_new=0; v2sink_all=0; c2sink_all=0; weighted_density=0; weighted_volume =0; weighted_momentum=0
-  weighted_c2 =0; oksink_new=0; oksink_all=0; jsink=0; jsink_new=0; jsink_all=0; dMBH_coarse=0
-  dMEd_coarse=0; dMsmbh=0; Esave=0; Efeed=0; dMBH_coarse_new=0; dMEd_coarse_new=0; dMsmbh_new =0
-  Esave_new=0; Efeed_new=0; dMBH_coarse_all=0; dMEd_coarse_all=0; dMsmbh_all =0; Esave_all=0
-  Efeed_all=0; sink_stat=0; sink_stat_all=0; v_avgptr=0; c_avgptr=0; d_avgptr=0; spinmag=0
-  spinmag_new=0; spinmag_all=0; eps_sink=0;
-
-  ! Initial set to check it is updated
-  d_avgptr=-1d0
-
-#ifdef RT
-  ! Only allocate some variables if AGNRT is activated
-  if (rt_AGN) then
-     allocate(LAGN_coarse     (1:nsinkmax))  ! AGNRT
-     allocate(dMeff_coarse    (1:nsinkmax))  ! AGNRT
-     allocate(dMeff_coarse_new(1:nsinkmax))  ! AGNRT
-     allocate(dMeff_coarse_all(1:nsinkmax))  ! AGNRT
-     allocate(lumfrac_AGN(1:nsinkmax,1:nGroups))
-     LAGN_coarse=0; dMeff_coarse=0; dMeff_coarse_new=0; dMeff_coarse_all=0; lumfrac_AGN=0
-  end if
-#endif
-  allocate(rg_scale(1:nsinkmax))
-  rg_scale=0
-  ! Dynamical friction from particles (HP)
-  if (drag_part) then
-     ! quantities needed to compute DF at
-     ! measured around each BHs (1:nsinkmax)
-     ! for each level (levelmin:nlevelmax)
-     ! for stars and DM (1:2).
-     allocate(v_background(1:nsinkmax, 1:ndim, 1:2))
-     allocate(n_background(1:nsinkmax, 1:2))
-     allocate(m_background(1:nsinkmax, 1:2))
-     allocate(mass_lowspeed_background(1:nsinkmax, 1:2))
-     allocate(fact_fast_background(1:nsinkmax, 1:2))
-     allocate(vrel_sink(1:nsinkmax, 1:ndim, 1:2))
-     allocate(vrel_sink_norm(1:nsinkmax, 1:2))
-     allocate(v_DFnew(1:nsinkmax, 1:ndim, 1:2))
-     allocate(v_DFall(1:nsinkmax, 1:ndim, 1:2))
-     allocate(v_DF(1:nsinkmax, levelmin:nlevelmax, 1:ndim, 1:2))
-     allocate(v_DFnew_all(1:nsinkmax, levelmin:nlevelmax, 1:ndim, 1:2))
-     allocate(mass_DFnew(1:nsinkmax, 1:2))
-     allocate(mass_DFall(1:nsinkmax, 1:2))
-     allocate(mass_DF(1:nsinkmax, levelmin:nlevelmax, 1:2))
-     allocate(mass_DFnew_all(1:nsinkmax, levelmin:nlevelmax, 1:2))
-     allocate(fact_fastnew(1:nsinkmax, 1:2))
-     allocate(fact_fastall(1:nsinkmax, 1:2))
-     allocate(fact_fast(1:nsinkmax, levelmin:nlevelmax, 1:2))
-     allocate(fact_fastnew_all(1:nsinkmax, levelmin:nlevelmax, 1:2))
-     allocate(mass_lowspeednew(1:nsinkmax, 1:2))
-     allocate(mass_lowspeedall(1:nsinkmax, 1:2))
-     allocate(mass_lowspeed(1:nsinkmax, levelmin:nlevelmax, 1:2))
-     allocate(mass_lowspeednew_all(1:nsinkmax, levelmin:nlevelmax, 1:2))
-     allocate(n_partnew(1:nsinkmax, 1:2))
-     allocate(n_partall(1:nsinkmax, 1:2))
-     allocate(n_part(1:nsinkmax, levelmin:nlevelmax, 1:2))
-     allocate(n_partnew_all(1:nsinkmax, levelmin:nlevelmax, 1:2))
-     allocate(DF_factor(1:nsinkmax, 1:3))
-     allocate(DF_factor_new(1:nsinkmax, 1:3))
-     allocate(DF_factor_all(1:nsinkmax, 1:3))
-
-     ! Set initial value to 0
-     v_background=0; n_background=0; m_background=0; mass_lowspeed_background=0; fact_fast_background=0
-     vrel_sink=0; vrel_sink_norm=0; v_DFnew=0; v_DFall=0; v_DF=0; v_DFnew_all=0; mass_DFnew=0
-     mass_DFall=0; mass_DF=0; mass_DFnew_all=0; fact_fastnew=0; fact_fastall=0; fact_fast=0;
-     fact_fastnew_all=0; mass_lowspeednew=0; mass_lowspeedall=0; mass_lowspeed=0; mass_lowspeednew_all=0
-     n_partnew=0; n_partall=0; n_part=0; n_partnew_all=0; DF_factor=0; DF_factor_new=0; DF_factor_all=0
-
-     ! Initial set to check it is updated
-     m_background=-1d0
-
-     ! This table is needed to properly fill the above one
-     ! after a merger
-     allocate(most_massive_sink(1:nsinkmax))
-     most_massive_sink=0
-
-  end if
-
-  eps_sink=0.057190958d0
+  allocate(idsink_sort(1:nsinkmax))
+  allocate(xmsink(1:nsinkmax))
+  allocate(delta_mass_new(1:nsinkmax),delta_mass_all(1:nsinkmax))
+  allocate(ok_blast_agn(1:nsinkmax),ok_blast_agn_all(1:nsinkmax))
+  allocate(direct_force_sink(1:nsinkmax))
+  direct_force_sink=.false.
+  allocate(new_born(1:nsinkmax),new_born_all(1:nsinkmax),new_born_new(1:nsinkmax))
 
   call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
-  call compute_ncloud_sink
 
+  ! Loading sinks from the restart
   if(nrestart>0)then
-     ilun=4*ncpu+myid+10
+
      call title(nrestart,nchar)
 
      if(IOGROUPSIZEREP>0)then
         call title(((myid-1)/IOGROUPSIZEREP)+1,ncharcpu)
-        fileloc='output_'//TRIM(nchar)//'/group_'//TRIM(ncharcpu)//'/sink_'//TRIM(nchar)//'.out'
+        fileloc='output_'//TRIM(nchar)//'/group_'//TRIM(ncharcpu)//'/sink_'//TRIM(nchar)//'.csv'
      else
-        fileloc='output_'//TRIM(nchar)//'/sink_'//TRIM(nchar)//'.out'
+        fileloc='output_'//TRIM(nchar)//'/sink_'//TRIM(nchar)//'.csv'
      endif
 
-
-     call title(myid,nchar)
-     fileloc=TRIM(fileloc)//TRIM(nchar)
-
-     inquire(file=fileloc, exist=ic_sink)
+     ! Wait for the token
+#ifndef WITHOUTMPI
+     if(IOGROUPSIZE>0) then
+        if (mod(myid-1,IOGROUPSIZE)/=0) then
+           call MPI_RECV(dummy_io,1,MPI_INTEGER,myid-1-1,tag,&
+                & MPI_COMM_WORLD,MPI_STATUS_IGNORE,info2)
+        end if
+     endif
+#endif
 
      nsink=0
-     nindsink=0
-     if (ic_sink) then
-
-        ! Wait for the token
-#ifndef WITHOUTMPI
-        if(IOGROUPSIZE>0) then
-           if (mod(myid-1,IOGROUPSIZE)/=0) then
-              call MPI_RECV(dummy_io,1,MPI_INTEGER,myid-1-1,tag,&
-                   & MPI_COMM_WORLD,MPI_STATUS_IGNORE,info2)
-           end if
-        endif
-#endif
-
-        open(unit=ilun,file=fileloc,form='unformatted')
-        rewind(ilun)
-        read(ilun)nsink
-        read(ilun)nindsink
-
-        if(nsink>0)then
-           allocate(xdp(1:nsink))
-           allocate(isp(1:nsink))
-           read(ilun)isp
-           idsink(1:nsink)=isp
-           ! Important for the indexation of sinks
-           nindsink=MAXVAL(idsink)
-           deallocate(isp)
-           read(ilun)xdp
-           msink(1:nsink)=xdp
-           do idim=1,ndim
-              read(ilun)xdp
-              xsink(1:nsink,idim)=xdp
-           end do
-           do idim=1,ndim
-              read(ilun)xdp
-              vsink(1:nsink,idim)=xdp
-           end do
-           read(ilun)xdp
-           tsink(1:nsink)=xdp
-           read(ilun)xdp
-           dMsmbh(1:nsink)=xdp
-           read(ilun)xdp
-           dMBH_coarse(1:nsink)=xdp
-           read(ilun)xdp
-           dMEd_coarse(1:nsink)=xdp
-           read(ilun)xdp
-           Esave(1:nsink)=xdp
-           do idim=1,ndim
-              read(ilun)xdp
-              jsink(1:nsink,idim)=xdp
-           end do
-           do idim=1,ndim
-              read(ilun)xdp
-              bhspin(1:nsink,idim)=xdp
-           end do
-           read(ilun)xdp
-           spinmag(1:nsink)=xdp
-           read(ilun)xdp
-           eps_sink(1:nsink)=xdp
-           do idim=1,ndim*2+1
-              do ilevel=levelmin,nlevelmax
-                 read(ilun)xdp
-                 sink_stat(1:nsink,ilevel,idim)=xdp
-              enddo
-           enddo
-           ! AGNRT
-#ifdef RT
-           if(rt_AGN) then
-              ! Read AGN radiation to be released
-              read(ilun)xdp
-              LAGN_coarse(1:nsink)=xdp
-              !! Uncomment this to restart from a non-AGNRT simulation
-              !! LAGN_coarse(1:nsink) = 0.d0
-           endif
-#endif
-           !/AGNRT
-           deallocate(xdp)
-        end if
-        close(ilun)
-        ! Send the token
-#ifndef WITHOUTMPI
-        if(IOGROUPSIZE>0) then
-           if(mod(myid,IOGROUPSIZE)/=0 .and.(myid.lt.ncpu))then
-              dummy_io=1
-              call MPI_SEND(dummy_io,1,MPI_INTEGER,myid-1+1,tag, &
-                   & MPI_COMM_WORLD,info2)
-           end if
-        endif
-#endif
-
+     open(10,file=fileloc,form='formatted')
+     eof=.false.
+     ! scrolling over the comment lines
+     read(10,'(A200)')comment_line
+     read(10,'(A200)')comment_line
+     do
+        read(10,'(I10,20(A1,ES21.10),A1,I10)',end=104)sid,co, sm1,co,&
+                           sx1,co,sx2,co,sx3,co, &
+                           sv1,co,sv2,co,sv3,co, &
+                           sl1,co,sl2,co,sl3,co, &
+                           stform,co, sacc_rate,co, &
+                           sacc_mass,co, &
+                           srho_gas,co, sc2_gas,co, seps_sink,co, &
+                           svg1,co,svg2,co,svg3,co, &
+                           sm2,co,slevel
+        nsink=nsink+1
+        idsink(nsink)=sid
+        msink(nsink)=sm1
+        xsink(nsink,1)=sx1
+        xsink(nsink,2)=sx2
+        xsink(nsink,3)=sx3
+        vsink(nsink,1)=sv1
+        vsink(nsink,2)=sv2
+        vsink(nsink,3)=sv3
+        lsink(nsink,1)=sl1
+        lsink(nsink,2)=sl2
+        lsink(nsink,3)=sl3
+        tsink(nsink)=stform
+        dMBHoverdt(nsink)=sacc_rate
+        delta_mass(nsink)=sacc_mass
+        rho_gas(nsink)=srho_gas
+        c2sink(nsink)=sc2_gas
+        eps_sink(nsink)=seps_sink
+        vel_gas(nsink,1)=svg1
+        vel_gas(nsink,2)=svg2
+        vel_gas(nsink,3)=svg3
+        new_born(nsink)=.false. ! this is a restart
+        msmbh(nsink)=sm2
+        vsold(nsink,1:ndim,slevel)=vsink(nsink,1:ndim)
+        vsnew(nsink,1:ndim,slevel)=vsink(nsink,1:ndim)
+     end do
+104  continue
+     sinkint_level=slevel
+     if(nsink>0)then
+        nindsink=idsink(nsink)
      end if
+     close(10)
+
+     ! Send the token
+#ifndef WITHOUTMPI
+     if(IOGROUPSIZE>0) then
+        if(mod(myid,IOGROUPSIZE)/=0 .and.(myid.lt.ncpu))then
+           dummy_io=1
+           call MPI_SEND(dummy_io,1,MPI_INTEGER,myid-1+1,tag, &
+                & MPI_COMM_WORLD,info2)
+        end if
+     endif
+#endif
+
   end if
 
+  ! Loading sinks from the ICs (ic_sink or ic_sink_restart)
   if (nrestart>0)then
      nsinkold=nsink
      if(TRIM(initfile(levelmin)).NE.' ')then
@@ -300,6 +206,10 @@ subroutine init_sink
      end if
      INQUIRE(FILE=filename, EXIST=ic_sink)
      if (myid==1)write(*,*)'Looking for file ic_sink_restart: ',filename
+     if (.not. ic_sink)then
+        filename='ic_sink_restart'
+        INQUIRE(FILE=filename, EXIST=ic_sink)
+     end if
   else
      nsink=0
      nindsink=0
@@ -311,102 +221,88 @@ subroutine init_sink
      end if
      INQUIRE(FILE=filename, EXIST=ic_sink)
      if (myid==1)write(*,*)'Looking for file ic_sink: ',filename
+     if (.not. ic_sink)then
+        filename='ic_sink'
+        INQUIRE(FILE=filename, EXIST=ic_sink)
+     end if
   end if
 
   if (ic_sink)then
+
+     ! Wait for the token
 #ifndef WITHOUTMPI
      if(IOGROUPSIZE>0) then
         if (mod(myid-1,IOGROUPSIZE)/=0) then
-           dummy_io=1
            call MPI_RECV(dummy_io,1,MPI_INTEGER,myid-1-1,tag2,&
-                &MPI_COMM_WORLD,MPI_STATUS_IGNORE,info2)
+                & MPI_COMM_WORLD,MPI_STATUS_IGNORE,info2)
         end if
      endif
 #endif
-     open(10, file=filename, form='formatted')
-     read(10, *) nsinknew
-     nsink = nsink + nsinknew
 
-     ! FORMAT FOR THE SINKFILE
-     ! 1st line:  Number of sink particles to be read from file
-     ! Every other line: sink mass [Msun], x , y, z, vx [km/s], vy [km/s], vz [km/s], lx, ly, lz
-     ! The positions x,y and z are given in units of code_length, so boxlen/2 is the middle of the box
-
-     !EXAMPLE for a case with 1 10Msun black hole at rest in the centre of the box
-     ! boxlen=10
-     ! ------- Beginning of file ic_sink
-     ! 1
-     ! 10,5,5,5,0,0,0,0,0,0
-     ! ------ End of file ic_sink
-
-     do isink=nsinkold+1, nsink
-        read(10,*,end=102) mm1, xx1, xx2, xx3, vv1, vv2, vv3, ll1, ll2, ll3
+     open(10,file=filename,form='formatted')
+     eof=.false.
+     do
+        read(10,*,end=103)sm1,sx1,sx2,sx3,sv1,sv2,sv3,sl1,sl2,sl3,sm2
+        nsink=nsink+1
         nindsink=nindsink+1
-        idsink(isink)=nindsink
-        msink(isink)=mm1*2.d33/(scale_d*scale_l**3)
-        xsink(isink,1)=xx1
-        xsink(isink,2)=xx2
-        xsink(isink,3)=xx3
-        vsink(isink,1)=vv1*1.d5/scale_v
-        vsink(isink,2)=vv2*1d5/scale_v
-        vsink(isink,3)=vv3*1d5/scale_v
-        jsink(isink,1)=ll1
-        jsink(isink,2)=ll2
-        jsink(isink,3)=ll3
-        tsink(isink)=t
-        dMsmbh(isink)=0d0
-        Esave(isink)=0d0
-        dMBH_coarse(isink)=0d0
-        dMEd_coarse(isink)=0d0
-        spinmag(isink)=0d0
-        eps_sink(isink)=0d0
-        bhspin(isink,1:3)=jsink(isink,1:3)
-        ! AGNRT
-#ifdef RT
-        if (rt_AGN) LAGN_coarse(isink) = 0.d0
-#endif
-        !/AGNRT
-        ! Particles dynamical friction (HP)
-        ! itype=1 for stars, itype=2 for DM
-        if (drag_part) then
-           do itype = 1, 2
-              v_DF(isink, levelmin:nlevelmax, 1, itype) = vsink(isink, 1)
-              v_DF(isink, levelmin:nlevelmax, 2, itype) = vsink(isink, 2)
-              v_DF(isink, levelmin:nlevelmax, 3, itype) = vsink(isink, 3)
-              mass_DF(isink, levelmin:nlevelmax, itype) = 0d0
-              mass_lowspeed(isink, levelmin:nlevelmax, itype) = 0d0
-              fact_fast(isink, levelmin:nlevelmax, itype) = 0d0
-              n_part(isink, levelmin:nlevelmax, itype) = 0
-           end do
-        end if
-        !/Particles dynamical friction (HP)
+        idsink(nsink)=nindsink
+        msink(nsink)=sm1
+        xsink(nsink,1)=sx1+boxlen/2
+        xsink(nsink,2)=sx2+boxlen/2
+        xsink(nsink,3)=sx3+boxlen/2
+        vsink(nsink,1)=sv1
+        vsink(nsink,2)=sv2
+        vsink(nsink,3)=sv3
+        lsink(nsink,1)=sl1
+        lsink(nsink,2)=sl2
+        lsink(nsink,3)=sl3
+        tsink(nsink)=t
+        new_born(nsink)=.false.
+        msmbh(nsink)=sm2
+        vsold(nsink,1:ndim,levelmin)=vsink(nsink,1:ndim)
+        vsnew(nsink,1:ndim,levelmin)=vsink(nsink,1:ndim)
      end do
-102  continue
+103  continue
+     sinkint_level=levelmin
      close(10)
 
+     ! Send the token
 #ifndef WITHOUTMPI
      if(IOGROUPSIZE>0) then
-        if ((mod(myid-1,IOGROUPSIZE)/=0) .and. myid .lt. ncpu) then
+        if(mod(myid,IOGROUPSIZE)/=0 .and.(myid.lt.ncpu))then
            dummy_io=1
-           call MPI_RECV(dummy_io,1,MPI_INTEGER,myid-1-1,tag2,&
-                &MPI_COMM_WORLD,MPI_STATUS_IGNORE,info2)
+           call MPI_SEND(dummy_io,1,MPI_INTEGER,myid-1+1,tag2, &
+                & MPI_COMM_WORLD,info2)
         end if
      endif
 #endif
 
-     if (myid==1.and.nsink-nsinkold>0)then
-        write(*,*)'sinks read from file '//filename
-        write(*,"(999(A))")'   Id           M [code mass]          x             y         &
-             &z            vx            vy            vz            lx            &
-             &ly            lz       '
-        write(*,"(999(A))") ' ==========================================================&
-             &==========================================================================================='
-        do isink=nsinkold+1,nsink
-           write(*,'(I8,2X,10(2X,E12.5))')idsink(isink),msink(isink),xsink(isink,1:ndim),&
-                vsink(isink,1:ndim), jsink(isink,1:ndim)
-        end do
-     end if
   end if
+
+  ! Compute number of cloud particles within sink sphere
+  call compute_ncloud_sink
+
+  ! Output sink properties to screen
+  if (myid==1.and.nsink-nsinkold>0)then
+     write(*,*)'sinks read from file '//filename
+     write(*,'("   Id           M             x             y             z            vx            vy            vz            lx            ly            lz       ")')
+     write(*,'("======================================================================================================================================================")')
+     do isink=nsinkold+1,nsink
+        write(*,'(I8,2X,10(2X,E12.5))')idsink(isink),msink(isink),xsink(isink,1:ndim),&
+             vsink(isink,1:ndim),lsink(isink,1:ndim)
+     end do
+  end if
+
+  ! Set direct force boolean
+  if(mass_sink_direct_force .ge. 0.0)then
+     do isink=1,nsink
+        direct_force_sink(isink)=(msink(isink) .ge. mass_sink_direct_force*M_sun/(scale_d*scale_l**3))
+     end do
+  else
+     do isink=1,nsink
+        direct_force_sink(isink)=.False.
+     end do
+  endif
 
 end subroutine init_sink
 !################################################################
@@ -414,24 +310,23 @@ end subroutine init_sink
 !################################################################
 !################################################################
 subroutine compute_ncloud_sink
-  use amr_commons, only:dp,myid
-  use pm_commons, only:ir_cloud,ncloud_sink
+  use amr_commons, only:dp
+  use pm_commons, only:ir_cloud,ir_cloud_massive,ncloud_sink,ncloud_sink_massive
   real(dp)::xx,yy,zz,rr
   integer::ii,jj,kk
-
   ! Compute number of cloud particles
   ncloud_sink=0
+  ncloud_sink_massive=0
   do kk=-2*ir_cloud,2*ir_cloud
-     zz=dble(kk)/2.0
+     zz=dble(kk)/2
      do jj=-2*ir_cloud,2*ir_cloud
-        yy=dble(jj)/2.0
+        yy=dble(jj)/2
         do ii=-2*ir_cloud,2*ir_cloud
-              xx=dble(ii)/2.0
+           xx=dble(ii)/2
            rr=sqrt(xx*xx+yy*yy+zz*zz)
            if(rr<=dble(ir_cloud))ncloud_sink=ncloud_sink+1
+           if(rr<=dble(ir_cloud_massive))ncloud_sink_massive=ncloud_sink_massive+1
         end do
      end do
   end do
-
-  if(myid==1)write(*,*)"Number of cloud particles per sink:",ncloud_sink
 end subroutine compute_ncloud_sink
