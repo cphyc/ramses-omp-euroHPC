@@ -110,6 +110,8 @@ subroutine read_params
   write(*,*)'       written by Romain Teyssier (University of Zurich)       '
   write(*,*)'               (c) CEA 1999-2007, UZH 2008-2014                '
   write(*,*)' '
+  write(*,*)'                This is the kebabrulle edition                 '
+  write(*,*)' '
 #ifdef _OPENMP
   write(*,'(" Working with nproc = ",I4," and nthr = ",I3," for ndim = ",I1)')ncpu,nthr,ndim
   write(*,'(" With nvector = ",I3)')nvector
