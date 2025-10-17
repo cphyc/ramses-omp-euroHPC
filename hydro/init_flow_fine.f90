@@ -288,9 +288,7 @@ subroutine init_flow_fine(ilevel)
            if(ncache>0)then
               init_array=0d0
               ! Default value for metals
-              if(cosmo .and. metal) then
-                 if(ivar==imetal)init_array=z_ave*0.02 ! from solar units
-              end if
+             ! if(cosmo.and.ivar==imetal.and.metal.ne.0)init_array=z_ave*0.02d0 ! from solar units  !Oscar:removed for now. imetal is hydrogen variable in new patch
               ! Default value for ionization fraction
               if(cosmo)xval=sqrt(omega_m)/(h0/100.*omega_b) ! From the book of Peebles p. 173
               if(cosmo.and.ivar==ixion.and.aton)init_array=1.2d-5*xval

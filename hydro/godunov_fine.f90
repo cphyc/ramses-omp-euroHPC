@@ -66,7 +66,7 @@ subroutine set_unew(ilevel)
         do ivar=1,nvar
            unew(active(ilevel)%igrid(i)+iskip,ivar) = uold(active(ilevel)%igrid(i)+iskip,ivar)
         end do
-        if(momentum_feedback)then
+        if(momentum_feedback>0)then
               pstarnew(active(ilevel)%igrid(i)+iskip) = 0.0
         endif
         if(pressure_fix)then
@@ -100,7 +100,7 @@ subroutine set_unew(ilevel)
               unew(reception(icpu,ilevel)%igrid(i)+iskip,ivar)=0.0
            end do
         end do
-        if(momentum_feedback)then
+        if(momentum_feedback>0)then
            do i=1,reception(icpu,ilevel)%ngrid
               pstarnew(reception(icpu,ilevel)%igrid(i)+iskip) = 0.0
            end do
@@ -166,7 +166,7 @@ subroutine set_uold(ilevel)
         do ivar=1,nvar
               uold(active(ilevel)%igrid(i)+iskip,ivar) = unew(active(ilevel)%igrid(i)+iskip,ivar)
         end do
-        if(momentum_feedback)then
+        if(momentum_feedback>0)then
               pstarold(active(ilevel)%igrid(i)+iskip) = pstarnew(active(ilevel)%igrid(i)+iskip)
         endif
         if(pressure_fix)then
@@ -577,7 +577,7 @@ subroutine godfine1(ind_grid,ncache,ilevel)
            end do
         end if
         ! Gather stellar momentum
-        if(momentum_feedback)then
+        if(momentum_feedback>0)then
            do i=1,nexist
               ploc(ind_exist(i),i3,j3,k3)=pstarold(ind_cell(i))
            end do

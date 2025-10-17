@@ -32,7 +32,7 @@ subroutine read_params
   !--------------------------------------------------
   ! Namelist definitions
   !--------------------------------------------------
-  namelist/run_params/clumpfind,cosmo,pic,sink,lightcone,poisson,hydro,rt,verbose,debug &
+  namelist/run_params/clumpfind,cosmo,pic,sink,tracer,lightcone,poisson,hydro,rt,verbose,debug &
        & ,nrestart,ncontrol,nstepmax,nsubcycle,load_weights,part_univ_cost,nremap,ordering &
        & ,bisec_tol,static,overload,cost_weighting,aton,nrestart_quad,restart_remap &
        & ,static_dm,static_gas,static_stars,convert_birth_times,use_proper_time,remap_pscalar &
@@ -65,8 +65,9 @@ subroutine read_params
        & ,ic_mag_scale_R,ic_mag_scale_H,ic_mag_scale_B,cosmo_add_gas_index,ic_skip_type &
        & ,ic_mask_ivar,ic_mask_min,ic_mask_max,ic_mask_ptype,analytic_gas_profile
 #endif
-  namelist/tracer_params/ MC_tracer,tracer,tracer_feed,tracer_feed_fmt,tracer_mass, &
-       tracer_first_balance_part_per_cell,tracer_first_balance_levelmin
+  namelist/tracer_params/MC_tracer,tracer_feed,tracer_feed_fmt &
+       & ,tracer_mass,tracer_first_balance_part_per_cell &
+       & ,tracer_first_balance_levelmin, tracer_ivar_refine, tracer_var_cut_refine
   ! MPI initialization
 #ifndef WITHOUTMPI
 #ifdef _OPENMP

@@ -218,9 +218,14 @@ subroutine process_progenitor_data()
   !---------------------------------
 
   ! Sort arrays for matching
+#ifdef LONGINT
+  call quick_sort_int_i8b(idp_copy, part_local_ind, npartmax)
+  call quick_sort_int_i8b(galaxy_tracers_copy, dummy, nprogs)
+#else
   call quick_sort_int_int(idp_copy, part_local_ind, npartmax)
-  call quick_sort_int_int(tracers_all, tracer_loc_progids_all, nprogs*nmost_bound)
   call quick_sort_int_int(galaxy_tracers_copy, dummy, nprogs)
+#endif
+  call quick_sort_int_int(tracers_all, tracer_loc_progids_all, nprogs*nmost_bound)
 
   ! sort past progenitors in-place by galaxy particle ID;
   ! will be needed later for multi-snapshot progenitor search

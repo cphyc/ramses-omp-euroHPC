@@ -1,6 +1,7 @@
 subroutine backup_part(filename, filename_desc)
   use amr_commons
   use pm_commons
+  use hydro_parameters,only: nmetals ! ERIC
   use dump_utils, only : generic_dump, dump_header_info, dim_keys
   use iso_fortran_env
   use mpi_mod
@@ -11,7 +12,7 @@ subroutine backup_part(filename, filename_desc)
 #endif
   character(len=80) :: filename, filename_desc
 
-  integer :: i, idim, unit_out, ipart, ich
+  integer :: i, idim, unit_out, ipart
   character(len=80) :: fileloc
   character(len=5) :: nchar
   real(dp), allocatable, dimension(:) :: xdp
@@ -21,7 +22,7 @@ subroutine backup_part(filename, filename_desc)
 
   integer :: unit_info, ivar
   logical :: dump_info
-
+  
   integer :: imet ! ERIC
 
   if (verbose) write(*,*) 'Entering backup_part'
@@ -96,8 +97,8 @@ subroutine backup_part(filename, filename_desc)
         if (is_tracer(typep(i))) then
            xdp(ipart) = tracer_mass
         else
-        xdp(ipart) = mp(i)
-     end if
+           xdp(ipart) = mp(i)
+        end if
      end if
   end do
   call generic_dump("mass", ivar, xdp, unit_out, dump_info, unit_info)
@@ -175,7 +176,6 @@ subroutine backup_part(filename, filename_desc)
         end if
      end do
      call generic_dump("birth_time", ivar, xdp, unit_out, dump_info, unit_info)
-
      ! Write metallicity, EDGE2
      if (metal.ne.0) then
         do imet=1,nmetals ! ERIC
@@ -203,7 +203,7 @@ subroutine backup_part(filename, filename_desc)
 
   if (MC_tracer) then
      ! Dump particle pointer
-     allocate(ll(1:npart))
+     allocate(ii8(1:npart))
      ! Get the idp of the stars on which tracers are attached
      ipart = 0
      do i = 1, npartmax
@@ -211,15 +211,15 @@ subroutine backup_part(filename, filename_desc)
            ipart = ipart + 1
            ! For star tracers, store the id of the star instead of local index
            if (is_star_tracer(typep(i))) then
-              ll(ipart) = idp(partp(i))
+              ii8(ipart) = idp(partp(i))
            else ! store the relative location
-              ll(ipart) = partp(i)
+              ii8(ipart) = partp(i)
            end if
         end if
      end do
 
-     call generic_dump("partp", ivar, ll, unit_out, dump_info, unit_info)
-     deallocate(ll)
+     call generic_dump("partp", ivar, ii8, unit_out, dump_info, unit_info)
+     deallocate(ii8)
   end if
 
   !------------!

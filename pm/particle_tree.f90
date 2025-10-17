@@ -744,7 +744,7 @@ subroutine virtual_tree_fine(ilevel)
 
   particle_data_width = twondim+1
   if(star.or.sink) then
-     if(metal) then
+     if(metal.ne.0) then
         particle_data_width=twondim+2+nmetals+1 ! EDGE2, nmetals + mpb
      else
         particle_data_width=twondim+2

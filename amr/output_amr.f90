@@ -545,7 +545,7 @@ subroutine output_header(filename)
 #endif
      if(star.or.sink) then
         write(ilun,'(a)',advance='no')'tform '
-        if(metal) then
+        if(metal.ne.0) then
            write(ilun,'(a)',advance='no')'metal '
         endif
      endif

@@ -7,7 +7,7 @@ subroutine load_balance
   use pm_commons
   use hydro_commons, ONLY: nvar
 #ifndef WITHOUTMPI
-  use hydro_commons, ONLY: uold, pstarold
+  use hydro_commons, ONLY: uold, pstarold, rho_eq, p_eq
   use poisson_commons, ONLY: phi, f
 #ifdef RT
   use rt_hydro_commons, ONLY: nrtvar, rtuold
@@ -85,8 +85,12 @@ subroutine load_balance
 #else
         end do
 #endif
-        if(momentum_feedback)then
+        if(momentum_feedback>0)then
            call make_virtual_fine_dp(pstarold(1),ilevel)
+        endif
+        if(strict_equilibrium>0)then
+           call make_virtual_fine_dp(rho_eq(1),ilevel)
+           call make_virtual_fine_dp(p_eq(1),ilevel)
         endif
         if(simple_boundary)then
            call make_boundary_hydro(ilevel)
@@ -1375,7 +1379,7 @@ subroutine defrag
 
   end if
 
-  if(momentum_feedback)then
+  if(momentum_feedback>0)then
 
   do ind=1,twotondim
   iskip2=ncoarse+(ind-1)*ngridmax
