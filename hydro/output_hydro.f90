@@ -133,7 +133,7 @@ subroutine backup_hydro(filename, filename_desc)
                  do i = 1, ncache
                     xdp(i) = uold(ind_grid(i)+iskip, ivar)/max(uold(ind_grid(i)+iskip, 1), smallr)
                  end do
-                 if (metal.ne.0 .and. (ivar .ge. imetal .and. ivar < imetal+nmetals)) then
+                 if (metal.ne.0 .and. (ivar >= imetal .and. ivar < imetal+nmetals)) then
                     field_name = 'metal_' // trim(met_keys(ivar-imetal+1))
                  else
                     write(field_name, '("scalar_", i0.2)') ivar - ndim - 3 - nener

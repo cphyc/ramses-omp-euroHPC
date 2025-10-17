@@ -11,7 +11,7 @@ subroutine init_time
 #endif
   use mpi_mod
   implicit none
-  integer::i,Nmodel
+  integer::i,Nmodel,imet,j
   real(kind=8)::T2_sim
 #ifdef grackle
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
@@ -30,8 +30,8 @@ subroutine init_time
         if(initfile(levelmin).ne.' '.and.filetype.eq.'grafic')then
            call init_file
         endif
-        t=0.0
-        aexp=1.0
+        t=0
+        aexp=1
      end if
   end if
 
@@ -45,7 +45,7 @@ subroutine init_time
      ! Compute Friedman model look up table
      if(myid==1)write(*,*)'Computing Friedman model'
      call friedman(dble(omega_m),dble(omega_l),dble(omega_k), &
-          & 1.d-6,dble(aexp_ini), &
+          & 1d-6,dble(aexp_ini), &
           & aexp_frw,hexp_frw,tau_frw,t_frw,n_frw)
 
      ! Compute initial conformal time
@@ -152,7 +152,7 @@ subroutine init_time
      if(cosmo) then
         my_grackle_units%comoving_coordinates = 1
         ! Reonization redshift has to be later than starting redshift
-        z_reion=min(1./(1.1*aexp_ini)-1.,z_reion)
+        z_reion=min(1d0/(1.1d0*aexp_ini)-1d0,z_reion)
         ! Approximate initial temperature
         T2_start=1.356d-2/aexp_ini**2
         if(nrestart==0)then
@@ -232,10 +232,10 @@ subroutine init_time
         endif
         if(cosmo)then
            ! Reonization redshift has to be later than starting redshift
-           z_reion=min(1./(1.1*aexp_ini)-1.,z_reion)
+           z_reion=min(1d0/(1.1d0*aexp_ini)-1d0,z_reion)
            call set_model(Nmodel,dble(J21*1d-21),-1.0d0,dble(a_spec),-1.0d0,dble(z_reion), &
                 & -1,2, &
-                & dble(h0/100.),dble(omega_b),dble(omega_m),dble(omega_l), &
+                & dble(h0/100),dble(omega_b),dble(omega_m),dble(omega_l), &
                 & dble(aexp_ini),T2_sim)
            T2_start=T2_sim
            if(nrestart==0)then
@@ -244,7 +244,7 @@ subroutine init_time
         else
            call set_model(Nmodel,dble(J21*1d-21),-1.0d0,dble(a_spec),-1.0d0,dble(z_reion), &
                 & -1,2, &
-                & dble(70./100.),dble(0.04),dble(0.3),dble(0.7), &
+                & dble(70d0/100d0),0.04d0,0.3d0,0.7d0, &
                 & dble(aexp_ini),T2_sim)
         endif
      end if
@@ -258,7 +258,7 @@ subroutine init_time
      endif
      if(cosmo)then
         ! Reonization redshift has to be later than starting redshift
-        z_reion=min(1./(1.1*aexp_ini)-1.,z_reion)
+        z_reion=min(1d0/(1.1d0*aexp_ini)-1d0,z_reion)
         call set_model(Nmodel,dble(J21*1d-21),-1.0d0,dble(a_spec),-1.0d0,dble(z_reion), &
              & -1,2, &
              & dble(h0/100.),dble(omega_b),dble(omega_m),dble(omega_l), &
@@ -284,7 +284,7 @@ subroutine init_time
      endif
      if(cosmo)then
         ! Reonization redshift has to be later than starting redshift
-        z_reion=min(1./(1.1*aexp_ini)-1.,z_reion)
+        z_reion=min(1d0/(1.1d0*aexp_ini)-1d0,z_reion)
         call rt_set_model(dble(h0/100.),dble(omega_b),dble(omega_m),dble(omega_l), &
              & dble(aexp_ini),T2_sim)
         T2_start=T2_sim
@@ -297,6 +297,30 @@ subroutine init_time
      endif
   end if
 #endif
+
+  if(metal.ne.0)then 
+     if(myid==1)write(*,*)'Initializing yields'
+     call init_yields()
+     if(myid==1)then
+        if(nmetals.ne.size(met_keys))then
+           write(*,*) "Error: The value for nmetals is inconsitent with metal list. nmetals=",nmetals
+           call clean_stop
+        endif
+        write(*,*) "Number of tracked elements: ", nmetals
+        write(*,*) "The indices imet=[imetal,imetal+nmetal) are: "
+        imet=imetal
+        do i=1,nmetals
+           write(*,*) "imet=",imet,met_keys(i)
+           imet=imet+1
+        enddo
+        if(metal.eq.1)then
+           write(*,*) "Note: H+He forced to be first two for Z=1-(H+He) calculation."
+        else if(metal.eq.2)then
+           write(*,*) "Note: Z forced to be first index for metallicity tracer."
+        endif
+        write(*,'(A50)')"__________________________________________________"
+     endif
+  endif
 
 end subroutine init_time
 
@@ -406,7 +430,7 @@ subroutine init_file
              & xoff2(ilevel),&
              & xoff3(ilevel)
      end do
-  end if
+  end if  
 
 end subroutine init_file
 
@@ -416,10 +440,6 @@ subroutine init_cosmo
   use hydro_commons
   use pm_commons
   use gadgetreadfilemod
-#ifdef DICE
-  use dice_commons
-#endif
-
   use mpi_mod
   implicit none
   !------------------------------------------------------
@@ -450,7 +470,7 @@ subroutine init_cosmo
   SELECT CASE (filetype)
   case ('grafic', 'ascii')
      ! Reading initial conditions parameters only
-     aexp=2.0
+     aexp=2
      nlevelmax_part=levelmin-1
      do ilevel=levelmin,nlevelmax
         if(initfile(ilevel).ne.' ')then
@@ -537,7 +557,7 @@ subroutine init_cosmo
      end if
 
      ! Compute box length in the initial conditions in units of h-1 Mpc
-     boxlen_ini=dble(nx)*2**levelmin*dxini(levelmin)*(h0/100.)
+     boxlen_ini=dble(nx)*2**levelmin*dxini(levelmin)*(h0/100)
 
   CASE ('gadget')
      if (verbose) write(*,*)'Reading in gadget format from '//TRIM(initfile(levelmin))
@@ -557,7 +577,7 @@ subroutine init_cosmo
      endif
      omega_m = gadgetheader%omega0
      omega_l = gadgetheader%omegalambda
-     h0 = gadgetheader%hubbleparam * 100.d0
+     h0 = gadgetheader%hubbleparam * 100d0
      boxlen_ini = gadgetheader%boxsize
      aexp = gadgetheader%time
      aexp_ini = aexp
@@ -568,32 +588,7 @@ subroutine init_cosmo
      xoff1(levelmin)=0
      xoff2(levelmin)=0
      xoff3(levelmin)=0
-     dxini(levelmin) = boxlen_ini/(nx*2**levelmin*(h0/100.0))
-
-#ifdef DICE
-  CASE ('dice')
-     if (verbose) write(*,*)'Reading in gadget format from'//TRIM(initfile(levelmin))//'/'//TRIM(ic_file)
-     call gadgetreadheader(TRIM(initfile(levelmin))//'/'//TRIM(ic_file), 0,gadgetheader, ok)
-     if(.not.ok) call clean_stop
-     omega_m = gadgetheader%omega0
-     omega_l = gadgetheader%omegalambda
-     h0 = gadgetheader%hubbleparam * 100.d0
-     if(gadgetheader%boxsize>0d0) then
-        boxlen_ini = gadgetheader%boxsize/1e3
-     else
-        boxlen_ini = boxlen
-     endif
-     aexp = gadgetheader%time
-     aexp_ini = aexp
-     ! Compute SPH equivalent mass (initial gas mass resolution)
-     mass_sph=omega_b/omega_m*0.5d0**(ndim*levelmin)
-     nlevelmax_part = levelmin
-     astart(levelmin) = aexp
-     xoff1(levelmin)=0
-     xoff2(levelmin)=0
-     xoff3(levelmin)=0
-     dxini(levelmin) = boxlen_ini/(nx*2**levelmin*(h0/100.0))
-#endif
+     dxini(levelmin) = boxlen_ini/(nx*2**levelmin*(h0/100))
 
   CASE DEFAULT
      write(*,*) 'Unsupported input format '//filetype
@@ -607,7 +602,7 @@ subroutine init_cosmo
      write(*,'(" omega_m=",F7.3," omega_l=",F7.3," omega_b=",F7.3)')omega_m,omega_l,omega_b
      write(*,'(" box size=",1pe10.3," h-1 Mpc")')boxlen_ini
   end if
-  omega_k=1.d0-omega_l-omega_m
+  omega_k=1d0-omega_l-omega_m
 
   ! Compute linear scaling factor between aexp and astart(ilevel)
   do ilevel=levelmin,nlevelmax_part
@@ -660,8 +655,8 @@ contains
     real(dp)::fy
     real(dp)::y,a
 
-    y=omega_m*(1.d0/a-1.d0) + omega_l*(a*a-1.d0) + 1.d0
-    fy=1.d0/y**1.5d0
+    y=omega_m*(1d0/a-1d0) + omega_l*(a*a-1d0) + 1d0
+    fy=1d0/y**1.5d0
 
     return
   end function fy
@@ -678,7 +673,7 @@ contains
        write(*,*)'a=',a
        call clean_stop
     end if
-    y=omega_m*(1.d0/a-1.d0) + omega_l*(a*a-1.d0) + 1.d0
+    y=omega_m*(1d0/a-1d0) + omega_l*(a*a-1d0) + 1d0
     if(y .lt. 0.0D0)then
        write(*,*)'y=',y
        call clean_stop
@@ -701,7 +696,7 @@ contains
 !!$    a=1.e-7
 !!$    niter=0
 !!$10  niter=niter+1
-!!$    da=(d1/d1a(a)-1.d0)/fpeebl(a)*a
+!!$    da=(d1/d1a(a)-1d0)/fpeebl(a)*a
 !!$    a=a+da
 !!$    if (abs(da).gt.1.0e-8.and.niter.lt.10) go to 10
 !!$    ad1=a
@@ -715,9 +710,9 @@ contains
     real(dp) :: fact,y,eps
 
     eps=1.0d-6
-    y=omega_m*(1.d0/a-1.d0) + omega_l*(a*a-1.d0) + 1.d0
+    y=omega_m*(1d0/a-1d0) + omega_l*(a*a-1d0) + 1d0
     fact=rombint(eps,a,eps)
-    fpeebl=(omega_l*a*a-0.5d0*omega_m/a)/y - 1.d0 + a*fy(a)/fact
+    fpeebl=(omega_l*a*a-0.5d0*omega_m/a)/y - 1d0 + a*fy(a)/fact
     return
   end function fpeebl
   !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -825,12 +820,12 @@ subroutine friedman(O_mat_0,O_vac_0,O_k_0,alpha,axp_min, &
 
      nstep = nstep + 1
      dtau = alpha * axp_tau / dadtau(axp_tau,O_mat_0,O_vac_0,O_k_0)
-     axp_tau_pre = axp_tau - dadtau(axp_tau,O_mat_0,O_vac_0,O_k_0)*dtau/2.d0
+     axp_tau_pre = axp_tau - dadtau(axp_tau,O_mat_0,O_vac_0,O_k_0)*dtau/2d0
      axp_tau = axp_tau - dadtau(axp_tau_pre,O_mat_0,O_vac_0,O_k_0)*dtau
      tau = tau - dtau
 
      dt = alpha * axp_t / dadt(axp_t,O_mat_0,O_vac_0,O_k_0)
-     axp_t_pre = axp_t - dadt(axp_t,O_mat_0,O_vac_0,O_k_0)*dt/2.d0
+     axp_t_pre = axp_t - dadt(axp_t,O_mat_0,O_vac_0,O_k_0)*dt/2d0
      axp_t = axp_t - dadt(axp_t_pre,O_mat_0,O_vac_0,O_k_0)*dt
      t = t - dt
 
@@ -843,10 +838,10 @@ subroutine friedman(O_mat_0,O_vac_0,O_k_0,alpha,axp_min, &
 
   nskip=nstep/ntable
 
-  axp_t = 1.d0
-  t = 0.d0
-  axp_tau = 1.d0
-  tau = 0.d0
+  axp_t = 1d0
+  t = 0d0
+  axp_tau = 1d0
+  tau = 0d0
   nstep = 0
   nout=0
   t_out(nout)=t
@@ -858,12 +853,12 @@ subroutine friedman(O_mat_0,O_vac_0,O_k_0,alpha,axp_min, &
 
      nstep = nstep + 1
      dtau = alpha * axp_tau / dadtau(axp_tau,O_mat_0,O_vac_0,O_k_0)
-     axp_tau_pre = axp_tau - dadtau(axp_tau,O_mat_0,O_vac_0,O_k_0)*dtau/2.d0
+     axp_tau_pre = axp_tau - dadtau(axp_tau,O_mat_0,O_vac_0,O_k_0)*dtau/2d0
      axp_tau = axp_tau - dadtau(axp_tau_pre,O_mat_0,O_vac_0,O_k_0)*dtau
      tau = tau - dtau
 
      dt = alpha * axp_t / dadt(axp_t,O_mat_0,O_vac_0,O_k_0)
-     axp_t_pre = axp_t - dadt(axp_t,O_mat_0,O_vac_0,O_k_0)*dt/2.d0
+     axp_t_pre = axp_t - dadt(axp_t,O_mat_0,O_vac_0,O_k_0)*dt/2d0
      axp_t = axp_t - dadt(axp_t_pre,O_mat_0,O_vac_0,O_k_0)*dt
      t = t - dt
 
@@ -904,3 +899,308 @@ function dadt(axp_t,O_mat_0,O_vac_0,O_k_0)
   dadt = sqrt(dadt)
   return
 end function dadt
+
+subroutine init_yields()
+  use amr_parameters
+  implicit none
+  integer :: im,iz,imet,atomic_nr,ielement,n_elements,fileunit
+  character(len=3)::element
+  real(dp):: Ia_yield 
+  real(dp),dimension(:),allocatable:: mloss_element
+
+  allocate(met_keys(nmetals))
+
+  ! AGB winds
+  !write(*,*) "Initialize AGB yields" 
+  open(fileunit, file = AGByieldfile, status = 'old')
+  read(fileunit,*) n_elements, nmet_AGB, nmass_AGB
+  allocate(AGB_yields(nmetals,nmet_AGB,nmass_AGB))
+  allocate(ytable_met_AGB(nmet_AGB))
+  allocate(ytable_mass_AGB(nmass_AGB))
+
+  read(fileunit,*) ytable_met_AGB(:)
+  read(fileunit,*) ytable_mass_AGB(:)
+
+  AGB_yields=0.d0
+ 
+  do imet=1,nmetals
+     rewind(fileunit)
+     read(fileunit,*)
+     read(fileunit,*)
+     read(fileunit,*)
+     do ielement=1,n_elements
+        read(fileunit,*) element, atomic_nr
+        if(atomic_nr.eq.metal_list(imet))then
+           met_keys(imet)=trim(element)
+           do iz=1, nmet_AGB
+              read(fileunit,*)AGB_yields(imet,iz,:)
+           enddo
+        else
+           do iz=1, nmet_AGB
+              read(fileunit,*)
+           enddo
+        endif
+     enddo
+  enddo
+  
+  ! Ensure no negative yields
+  do imet=1,nmetals
+     do iz=1,nmet_AGB
+        do im=1,nmass_AGB
+           AGB_yields(imet,iz,im) = max(AGB_yields(imet,iz,im),0.d0)
+        enddo
+     enddo
+  enddo
+
+  rewind(fileunit)
+  read(fileunit,*)
+  read(fileunit,*)
+  read(fileunit,*)
+  allocate(mloss_element(nmass_AGB))
+  allocate(AGB_mloss(nmet_AGB,nmass_AGB))
+  AGB_mloss=0.d0
+  do ielement=1,n_elements
+     read(fileunit,*) element, atomic_nr
+     do iz=1, nmet_AGB
+        read(fileunit,*)mloss_element
+        AGB_mloss(iz,:)=AGB_mloss(iz,:)+mloss_element
+     enddo
+  enddo
+  deallocate(mloss_element)
+
+  if(metal.eq.2)then
+     ! Load yields for metallicity variable
+     rewind(fileunit)
+     read(fileunit,*)
+     read(fileunit,*)
+     read(fileunit,*)
+     allocate(mloss_element(nmass_AGB))
+     do ielement=1,n_elements
+        read(fileunit,*) element, atomic_nr
+        if((atomic_nr.eq.1).or.(atomic_nr.eq.2))then
+           do iz=1, nmet_AGB
+              read(fileunit,*)mloss_element
+              AGB_yields(1,iz,:)=AGB_yields(1,iz,:)+mloss_element
+           enddo
+        else
+           do iz=1, nmet_AGB
+              read(fileunit,*)
+           enddo
+        endif
+     enddo
+     deallocate(mloss_element)
+     ! Convert from H+He to Z
+     met_keys(1)="Z"
+     AGB_yields(1,:,:)=AGB_mloss-AGB_yields(1,:,:)
+  endif
+  close(fileunit)
+  
+  ! SNII
+  !write(*,*) "Initialize SNII yields" 
+  open(fileunit, file = SNIIyieldfile, status = 'old')
+  read(fileunit,*) n_elements, nmet_SNII, nmass_SNII
+  allocate(SNII_yields(nmetals,nmet_SNII,nmass_SNII))
+  allocate(ytable_met_SNII(nmet_SNII))
+  allocate(ytable_mass_SNII(nmass_SNII))
+  
+  read(fileunit,*) ytable_met_SNII(:)
+  read(fileunit,*) ytable_mass_SNII(:)
+  
+  SNII_yields=0.d0
+
+  do imet=1,nmetals
+     rewind(fileunit)
+     read(fileunit,*)
+     read(fileunit,*)
+     read(fileunit,*)
+     do ielement=1,n_elements
+        read(fileunit,*) element, atomic_nr
+        if(atomic_nr.eq.metal_list(imet))then
+           if(met_keys(imet).ne.trim(element))then
+              write(*,*) "Elements not matching (SNII):",met_keys(imet),element
+              call clean_stop
+           endif
+           do iz=1, nmet_SNII
+              read(fileunit,*) SNII_yields(imet,iz,:)
+           enddo
+        else
+           do iz=1, nmet_SNII
+              read(fileunit,*)
+           enddo
+        endif
+     enddo
+  enddo
+  
+  ! Ensure no negative yields
+  do imet=1,nmetals
+     do iz=1,nmet_SNII
+        do im=1,nmass_SNII
+           SNII_yields(imet,iz,im) = max(SNII_yields(imet,iz,im),0.d0)
+        enddo
+     enddo
+  enddo
+  
+  rewind(fileunit)
+  read(fileunit,*)
+  read(fileunit,*)
+  read(fileunit,*)
+  allocate(mloss_element(nmass_SNII))
+  allocate(SNII_mloss(nmet_SNII,nmass_SNII))
+  SNII_mloss=0.d0
+  do ielement=1,n_elements
+     read(fileunit,*) element, atomic_nr
+     do iz=1, nmet_SNII
+        read(fileunit,*)mloss_element
+        SNII_mloss(iz,:)=SNII_mloss(iz,:)+mloss_element
+     enddo
+  enddo
+  deallocate(mloss_element)
+  
+  if(metal.eq.2)then
+     ! Load yields for metallicity variable
+     rewind(fileunit)
+     read(fileunit,*)
+     read(fileunit,*)
+     read(fileunit,*)
+     allocate(mloss_element(nmass_SNII))
+     do ielement=1,n_elements
+        read(fileunit,*) element, atomic_nr
+        if((atomic_nr.eq.1).or.(atomic_nr.eq.2))then
+           do iz=1, nmet_SNII
+              read(fileunit,*)mloss_element
+              SNII_yields(1,iz,:)=SNII_yields(1,iz,:)+mloss_element
+           enddo
+        else
+           do iz=1, nmet_SNII
+              read(fileunit,*)
+           enddo
+        endif
+     enddo
+     deallocate(mloss_element)
+     ! Convert from H+He to Z
+     met_keys(1)="Z"
+     SNII_yields(1,:,:)=SNII_mloss-SNII_yields(1,:,:)
+  endif
+  close(fileunit)
+   
+  ! OB winds
+  !write(*,*) "Initialize OB yields" 
+  open(fileunit, file = OByieldfile, status = 'old')
+  read(fileunit,*) n_elements, nmet_OBwind, nmass_OBwind
+  allocate(OBwind_yields(nmetals,nmet_OBwind,nmass_OBwind))
+  allocate(ytable_met_OBwind(nmet_OBwind))
+  allocate(ytable_mass_OBwind(nmass_OBwind))
+  
+  read(fileunit,*) ytable_met_OBwind(:)
+  read(fileunit,*) ytable_mass_OBwind(:)
+  
+  OBwind_yields=0.d0
+
+  do imet=1,nmetals
+     rewind(fileunit)
+     read(fileunit,*)
+     read(fileunit,*)
+     read(fileunit,*)
+     do ielement=1,n_elements
+        read(fileunit,*) element, atomic_nr
+        if(atomic_nr.eq.metal_list(imet))then
+           if(met_keys(imet).ne.trim(element))then
+              write(*,*) "Elements not matching (OB):",met_keys(imet),element
+              call clean_stop
+           endif
+           do iz=1, nmet_OBwind
+              read(fileunit,*) OBwind_yields(imet,iz,:)
+           enddo
+        else
+           do iz=1, nmet_OBwind
+              read(fileunit,*)
+           enddo
+        endif
+     enddo
+  enddo
+  
+  ! Ensure no negative yields
+  do imet=1,nmetals
+     do iz=1,nmet_OBwind
+        do im=1,nmass_OBwind
+           OBwind_yields(imet,iz,im) = max(OBwind_yields(imet,iz,im),0.d0)
+        enddo
+     enddo
+  enddo
+  
+  rewind(fileunit)
+  read(fileunit,*)
+  read(fileunit,*)
+  read(fileunit,*)
+  allocate(mloss_element(nmass_OBwind))
+  allocate(OBwind_mloss(nmet_OBwind,nmass_OBwind))
+  OBwind_mloss=0.d0
+  do ielement=1,n_elements
+     read(fileunit,*) element, atomic_nr
+     do iz=1, nmet_OBwind
+        read(fileunit,*)mloss_element
+        OBwind_mloss(iz,:)=OBwind_mloss(iz,:)+mloss_element
+     enddo
+  enddo
+  deallocate(mloss_element)
+  
+  if(metal.eq.2)then
+     ! Load yields for metallicity variable
+     rewind(fileunit)
+     read(fileunit,*)
+     read(fileunit,*)
+     read(fileunit,*)
+     allocate(mloss_element(nmass_OBwind))
+     do ielement=1,n_elements
+        read(fileunit,*) element, atomic_nr
+        if((atomic_nr.eq.1).or.(atomic_nr.eq.2))then
+           do iz=1, nmet_OBwind
+              read(fileunit,*)mloss_element
+              OBwind_yields(1,iz,:)=OBwind_yields(1,iz,:)+mloss_element
+           enddo
+        else
+           do iz=1, nmet_OBwind
+              read(fileunit,*)
+           enddo
+        endif
+     enddo
+     deallocate(mloss_element)
+     ! Convert from H+He to Z
+     met_keys(1)="Z"
+     OBwind_yields(1,:,:)=OBwind_mloss-OBwind_yields(1,:,:)
+  endif  
+  close(fileunit)
+
+  ! SNIa
+  open(fileunit,file=SNIayieldfile,status='old')
+  read(fileunit,*) n_elements
+  
+  allocate(SNIa_yields(nmetals))
+  SNIa_yields=0.d0
+  
+  do imet=1,nmetals
+     rewind(fileunit)
+     read(fileunit,*)
+      
+     do ielement=1,n_elements
+        read(fileunit,*) element, atomic_nr, Ia_yield
+        if(atomic_nr.eq.metal_list(imet))then
+           if(met_keys(imet).ne.trim(element))then
+              write(*,*) "Elements not matching (SNIa):",met_keys(imet),element
+              call clean_stop
+           endif
+           SNIa_yields(imet)=max(Ia_yield,0.d0)
+        endif
+     end do
+  end do
+
+  if(metal.eq.2)then ! Not ideal, consider changing in feedback.
+     SNIa_yields(1) = 1.4 ! No H or He in SNe Ia, dump entire mass in metals.
+  endif
+
+  close(fileunit)
+  
+end subroutine
+
+
+

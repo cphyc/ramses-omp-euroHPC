@@ -68,6 +68,8 @@ subroutine read_params
   namelist/tracer_params/MC_tracer,tracer_feed,tracer_feed_fmt &
        & ,tracer_mass,tracer_first_balance_part_per_cell &
        & ,tracer_first_balance_levelmin, tracer_ivar_refine, tracer_var_cut_refine
+  namelist/yield_params/metal_list,AGByieldfile,SNIIyieldfile &
+       & ,OByieldfile,SNIayieldfile
   ! MPI initialization
 #ifndef WITHOUTMPI
 #ifdef _OPENMP
@@ -216,6 +218,9 @@ subroutine read_params
   rewind(1)
   read(1,NML=poisson_params,END=81)
 81 continue
+  rewind(1)
+  read(1,NML=yield_params,END=80)
+80 continue
 #ifdef DICE
   rewind(1)
   read(1,NML=dice_params,END=106)

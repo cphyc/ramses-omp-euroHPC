@@ -68,13 +68,11 @@
   allocate(xp    (npartmax,ndim))
   allocate(vp    (npartmax,ndim))
   allocate(mp    (npartmax))
-  if (MC_tracer .or. do_particle_snapshot) then
-     allocate(itmpp (npartmax))
-   end if
-   if (MC_tracer) then
-     allocate(partp (npartmax))
-     allocate(move_flag(npartmax))
-     move_flag = 0
+  allocate(itmpp (npartmax))
+  if (MC_tracer) then
+    allocate(partp (npartmax))
+    allocate(move_flag(npartmax))
+    move_flag(:) = 0
   end if
   allocate(nextp (npartmax))
   allocate(prevp (npartmax))
