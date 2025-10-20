@@ -458,7 +458,7 @@ module tracer_utils
 
 
    ! Attach tracer particles to other particles (e.g. stars)
-   subroutine attach_tracer(ind_tracer, proba, x_target_part, ind_target_part, nattach)
+   subroutine attach_tracer(ind_tracer, proba, x_target_part, ind_target_part, nattach, seed)
       use amr_commons
       use random
       use pm_commons
@@ -468,13 +468,16 @@ module tracer_utils
       integer, dimension(1:nvector), intent(in) :: ind_tracer, ind_target_part
       real(dp), dimension(1:nvector), intent(in) :: proba
       real(dp), dimension(1:nvector, 1:3), intent(in) :: x_target_part
+      integer, dimension(1:IRandNumSize), intent(in) :: seed
 
-      logical, dimension(1:nvector), save :: attach = .false.
+      logical, dimension(1:nvector) :: attach
       integer :: i, idim
       real(dp) :: r
 
+      attach(:) = .false.
+
       do i = 1, nattach
-         call ranf(tracer_seed, r)
+         call ranf(seed, r)
          attach(i) = r < proba(i)
       end do
 
