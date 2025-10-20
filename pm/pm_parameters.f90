@@ -19,6 +19,8 @@ module pm_parameters
   real(dp)::mass_sink_direct_force=-1        ! mass above which sinks are treated as "direct force" objects
 
   logical::create_sinks=.false.              ! turn formation of new sinks on
+  integer::npartmax_rho=0        ! Maximum number of particles in single grid to compute rho
+                                 ! Exceeding grid particles are randomly sampled by this number
 
   real(dp)::merging_timescale=-1             ! time during which sinks are considered for merging (only when 'timescale' is used),
                                              ! used also as contraction timescale in creation

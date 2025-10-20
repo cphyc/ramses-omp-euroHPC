@@ -480,7 +480,8 @@ subroutine solve_cooling(nH,T2,zsolar,boost,dt,deltaT2,ncell)
   implicit none
   integer::ncell
   real(kind=8)::dt
-  real(kind=8),dimension(1:ncell)::nH,T2,deltaT2,zsolar,boost
+  real(kind=8),dimension(1:ncell),intent(in)::nH,T2,zsolar,boost
+  real(kind=8),dimension(1:ncell),intent(out)::deltaT2
 
   real(kind=8)::facT,dlog_nH,dlog_T2,precoeff,h,h2,h3
   real(kind=8)::metal,cool,heat,cool_com,heat_com,yy,yy2,yy3
