@@ -137,6 +137,10 @@ subroutine star_formation(ilevel)
      call rans(ncpu,iseed,allseed)
      localseed=allseed(myid,1:IRandNumSize)
   end if
+  if(tracer_seed(1)==-1)then
+      call rans(ncpu, tseed, allseed)
+      tracer_seed = allseed(myid, 1:IRandNumSize)
+   end if
 
 #ifdef _OPENMP
 !$omp parallel

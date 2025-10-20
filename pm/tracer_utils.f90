@@ -124,7 +124,7 @@ module tracer_utils
    end subroutine pre_make_grid_fine_hook
 
    subroutine post_make_grid_fine_hook(ind_grid, ind_cell, ind, &
-      ilevel, nn, ibound, boundary_region, ompseed)
+      ilevel, nn, ibound, boundary_region, seed)
       use amr_commons
       use hydro_commons
       use pm_commons
@@ -145,7 +145,7 @@ module tracer_utils
 
       real(dp), dimension(1:ndim) :: tmp_xp
 
-      integer, dimension(1:IRandNumSize) :: ompseed
+      integer, dimension(1:IRandNumSize) :: seed
 
       call initialize_skip_loc
 
@@ -184,7 +184,7 @@ module tracer_utils
                   if (ok) then
 
                      ! Pick a random direction
-                     call ranf(ompseed, rand)
+                     call ranf(seed, rand)
 
                      do ison = 1, twotondim
                         if (rand < mass(ison) / mass(0)) then
@@ -328,9 +328,10 @@ module tracer_utils
    end subroutine
 
    ! This detaches the tracer from the particle
-   subroutine yield_tracers(icpu, ilevel, type_to_yield)
+   subroutine yield_tracers(icpu, ilevel, type_to_yield, seed)
       integer, intent(in)      :: icpu, ilevel
       type(part_t), intent(in) :: type_to_yield
+      integer, dimension(1:IRandNumSize), intent(in) :: seed
 
       integer  :: igrid, jgrid, ipart, jpart, npart1
       real(dp) :: rand
@@ -345,7 +346,7 @@ module tracer_utils
          ipart = headp(igrid)
          do jpart = 1, npart1
             if (typep(ipart)%family == type_to_yield%family) then
-               call ranf(tracer_seed, rand)
+               call ranf(seed, rand)
 
                ! Detach particles
                if (rand < proba_yield(partp(ipart))) then
@@ -362,11 +363,12 @@ module tracer_utils
       end do
    end subroutine
 
-   subroutine yield_tracers_within_radius(icpu, ilevel, radius, type_to_yield)
+   subroutine yield_tracers_within_radius(icpu, ilevel, radius, type_to_yield, seed)
       use constants, only: pi
       integer, intent(in)      :: icpu, ilevel
       real(dp)                 :: radius
       type(part_t), intent(in) :: type_to_yield
+      integer, dimension(1:IRandNumSize), intent(in) :: seed
 
       integer  :: igrid, jgrid, ipart, jpart, npart1, next_part
       real(dp) :: rand1, rand2, rand3, rand_r, rand_theta, rand_phi
@@ -384,16 +386,16 @@ module tracer_utils
          do jpart=1,npart1
             next_part = nextp(ipart)
             if (typep(ipart)%family == type_to_yield%family) then
-               call ranf(tracer_seed, rand1)
+               call ranf(seed, rand1)
 
                ! Detach particles
                if (rand1 < proba_yield(partp(ipart))) then
                   move_flag(ipart) = 1
                   ! Generate a random position within the explosion radius.
                   ! See https://math.stackexchange.com/questions/87230/picking-random-points-in-the-volume-of-sphere-with-uniform-probability
-                  call ranf(tracer_seed, rand1)
-                  call ranf(tracer_seed, rand2)
-                  call ranf(tracer_seed, rand3)
+                  call ranf(seed, rand1)
+                  call ranf(seed, rand2)
+                  call ranf(seed, rand3)
                   rand_r = rand1**(1._dp/3._dp) * radius
                   rand_theta = acos(2*rand2 - 1)
                   rand_phi = 2*pi * rand3
