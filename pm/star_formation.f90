@@ -409,14 +409,15 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
    ! Local variables
    logical, dimension(1:nvector) :: ok
 
-   real(dp),dimension(1:nvector)::sfr_ff,alpha_oscar,mach_oscar,sigma_oscar,bturb_oscar,divv2_oscar,curlv2_oscar,dxloc_oscar  
+   real(dp),dimension(1:nvector)::sfr_ff,alpha_oscar,mach_oscar,sigma_oscar,bturb_oscar,divv2_oscar,curlv2_oscar,dxloc_oscar
+   real(dp)::mach2
    real(dp) :: alpha0, b_turb, cs2, cs2_poly, curlv, curlv2
    real(dp) :: curlva, curlvb, curlvc, d1, d2, d3, d4, d5, d6
    real(dp) :: divv, divv2, d, fl, flong, fr, ftot, lapld
    real(dp) :: mcell, nH, pcomp, phi_t, phi_x
    real(dp) :: scrit, sigma2, sigma2_comp, sigma2_sole
    real(dp) :: sigs, T2, t_dyn, t_ff, T_poly, tdec, theta
-   real(dp) :: trgv, ul, ur, zeta
+   real(dp) :: trgv, ul, ur, zeta,xpos,ypos,zpos
    real(kind=8)::PoissMean
    integer :: ncell, nstar_corrected
    integer, dimension(1:nvector) :: nstar, ind_cell, ind_cell2
@@ -616,6 +617,7 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
                   CASE (1)
                      ! Virial parameter
                      alpha0    = (5.0d0*sigma2)/(pi*factG*d*dx_loc**2)
+                     mach2 = sigma2/cs2
                      ! Turbulent forcing parameter (Federrath 2008 & 2010)
                      if(pcomp*ndim-1.0d0 == 0d0) then
                         zeta   = 0.5d0
@@ -648,8 +650,8 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
 #endif
                      !sfr_ff(i) = (eps_star*phi_t/2.0d0)*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc((sigs-scrit)/sqrt(2.0d0*sigs)))
                      ! Decalibrated model - Kretschmer and Teyssier
-                     sfr_ff(i) = eps_star*0.5*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc_pre_f08((sigs-scrit)/sqrt(2.0d0*sigs)))
-                                        
+                     !sfr_ff(i) = eps_star*0.5*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc_pre_f08((sigs-scrit)/sqrt(2.0d0*sigs)))
+                     sfr_ff(i) = eps_star*0.5*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc((sigs-scrit)/sqrt(2.0d0*sigs))) !intrinsic erfc
                      if(SFdiagnostics)then  !OA: for VG
                         alpha_oscar(i)=alpha0
                         mach_oscar(i)=(sigma2/cs2)**0.5
@@ -777,11 +779,11 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
                ndebris_loc=ndebris_loc+1
             end if
              if(SFdiagnostics)then  !Oscar for VG 
-                x=(xg(ind_grid(i),1)+xc(ind,1)-skip_loc(1))*scale
-                y=(xg(ind_grid(i),2)+xc(ind,2)-skip_loc(2))*scale
-                z=(xg(ind_grid(i),3)+xc(ind,3)-skip_loc(3))*scale
+                xpos=(xg(ind_grid(i),1)+xc(ind,1)-skip_loc(1))*scale
+                ypos=(xg(ind_grid(i),2)+xc(ind,2)-skip_loc(2))*scale
+                zpos=(xg(ind_grid(i),3)+xc(ind,3)-skip_loc(3))*scale
                 write(SFunit_out,'(25e15.6)') aexp, d*scale_nH, &
-                      & x*scale_l/kpc2cm,y*scale_l/kpc2cm,z*scale_l/kpc2cm, &
+                      & xpos*scale_l/kpc2cm,ypos*scale_l/kpc2cm,zpos*scale_l/kpc2cm, &
                       & mgas*scale_m,birth_epoch*scale_t, &
                       & sfr_ff(i),&
                       & alpha_oscar(i),&
