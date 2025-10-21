@@ -633,13 +633,13 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
                  pII = mejecta*vej ! initial blast wave momentum in code units for pop II
 
                  if(momST) then
-                    ptot(j)=ptot(j)+pST                               !------- Post Sedov Taylor momentum
+                    ptot(j)=ptot(j)+fboostSN*pST                                !------- Post Sedov Taylor momentum
                  else
-                    ptot(j)=ptot(j)+pII                               !------- initial blastwave momentum
+                    ptot(j)=ptot(j)+fboostSN*pII                               !------- initial blastwave momentum
                  endif
 
                  ! ------- Energy
-                 ethermal(j)=ethermal(j)+numII*ENSN/vol_loc(j)        !------- ENSN per SNII event
+                 ethermal(j)=ethermal(j)+fboostSN*numII*ENSN/vol_loc(j)        !------- ENSN per SNII event
 
                  ! --- Metals
                  if(metal.ne.0)then
@@ -702,14 +702,14 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
                  momST=.true.
               endif
               if(momST) then
-                 ptot(j)=ptot(j)+pST                               !------- Post Sedov Taylor momentum
+                 ptot(j)=ptot(j)+fboostSN*pST                               !------- Post Sedov Taylor momentum
               else
-                 ptot(j)=ptot(j)+pIa*NumSNIa                       !------- initial pIa blastwave momentum
+                 ptot(j)=ptot(j)+fboostSN*pIa*NumSNIa                       !------- initial pIa blastwave momentum
               endif
 
             masslossIa=NumSNIa*Mremnant
             mloss(j)=mloss(j)+masslossIa/vol_loc(j)
-            ethermal(j)=ethermal(j)+NumSNIa*ESNIa/vol_loc(j)
+            ethermal(j)=ethermal(j)+fboostSN*NumSNIa*ESNIa/vol_loc(j)
 
             if(metal.ne.0)then
                Zloss=0.0
@@ -958,6 +958,9 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
         tekinstar=0.5d0*(vp(ind_part(j),1)**2 &
              &      +vp(ind_part(j),2)**2 &
              &      +vp(ind_part(j),3)**2)
+
+        ptot(j)=ptot(j)*fboostNum !Increase momentum due to numerical losses
+        ethermal(j)=ethermal(j)*fboostNum !Increase energy due to numerical losses
      if(ok(j))then !------- Check if particle is drifter
            do ii=1,2    !------- Do feedback over 2x2x2 cube
               do jj=1,2

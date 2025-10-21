@@ -44,7 +44,7 @@ subroutine star_formation(ilevel)
 #endif
   real(dp),dimension(1:3)::skip_loc
   real(dp)::dx,dx_loc,scale,vol_loc,dx_min,vol_min
-!  real(dp),dimension(1:nvector)::sfr_ff
+  !  real(dp),dimension(1:nvector)::sfr_ff
   integer ,dimension(1:ncpu,1:IRandNumSize)::allseed
   integer ,dimension(1:nvector)::ind_grid
 #ifdef SOLVERmhd
@@ -409,7 +409,7 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
    ! Local variables
    logical, dimension(1:nvector) :: ok
 
-   real(dp),dimension(1:nvector)::sfr_ff,alpha_oscar,mach_oscar,sigma_oscar,bturb_oscar,dxloc_oscar
+   real(dp),dimension(1:nvector)::sfr_ff,alpha_oscar,mach_oscar,sigma_oscar,bturb_oscar,divv2_oscar,curlv2_oscar,dxloc_oscar  
    real(dp) :: alpha0, b_turb, cs2, cs2_poly, curlv, curlv2
    real(dp) :: curlva, curlvb, curlvc, d1, d2, d3, d4, d5, d6
    real(dp) :: divv, divv2, d, fl, flong, fr, ftot, lapld
@@ -434,7 +434,7 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
    ! Flag leaf cells
    do i=1,ngrid
       ok(i)=son(ind_cell(i))==0
-      ! Oscar:
+      ! OA:
       ! --- pre-screen particles using density and temperature criterion. Avoids computing sf_virial stuff for all leafs
       if (ok(i)) then
          d=uold(ind_cell(i),1)
@@ -598,7 +598,7 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
                   sigma2 = uold(ind_cell(i),ivirial1)
                endif
             else
-!                    if(sf_compressive)then  !Oscar:not used in VG
+!                    if(sf_compressive)then  !OA:not used in VG
 !                       uold(ind_cell(i),ivirial1) = sigma2_comp
 !                       uold(ind_cell(i),ivirial2) = sigma2_sole
 !                    else
@@ -638,11 +638,19 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
                      ! Best fit values to the Multi-ff KM model (Hydro)
                      phi_t     = 0.49d0
                      phi_x     = 0.19d0
-                     sigs      = log(1.0d0+(b_turb**2)*(sigma2/cs2))
-                     scrit     = log(((pi**2)/5.)*(phi_x**2)*alpha0*(sigma2/cs2))
+                    ! sigs      = log(1.0d0+(b_turb**2)*(sigma2/cs2))
+                    ! scrit     = log(((pi**2)/5.)*(phi_x**2)*alpha0*(sigma2/cs2))
+
+                     ! Decalibrated model - Kretschmer and Teyssier
+                     sigs      = log(1.0d0+(b_turb**2)*(mach2))
+                     scrit     = log(alpha0*(1.+(2.*mach2**2)/(1.+mach2)))
+                                               
 #endif
-                     sfr_ff(i) = (eps_star*phi_t/2.0d0)*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc((sigs-scrit)/sqrt(2.0d0*sigs)))
-                     if(SFdiagnostics)then  !Oscar for VG
+                     !sfr_ff(i) = (eps_star*phi_t/2.0d0)*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc((sigs-scrit)/sqrt(2.0d0*sigs)))
+                     ! Decalibrated model - Kretschmer and Teyssier
+                     sfr_ff(i) = eps_star*0.5*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc_pre_f08((sigs-scrit)/sqrt(2.0d0*sigs)))
+                                        
+                     if(SFdiagnostics)then  !OA: for VG
                         alpha_oscar(i)=alpha0
                         mach_oscar(i)=(sigma2/cs2)**0.5
                         sigma_oscar(i)=(sigma2**0.5)
@@ -768,22 +776,20 @@ subroutine starform1(ind_grid, ngrid, ilevel, ntot_loc, mstar_tot_loc, mstar_los
             if(f_w>0) then
                ndebris_loc=ndebris_loc+1
             end if
-!             if(SFdiagnostics)then  !Oscar for VG 
-!                x=(xg(ind_grid(i),1)+xc(ind,1)-skip_loc(1))*scale
-!                y=(xg(ind_grid(i),2)+xc(ind,2)-skip_loc(2))*scale
-!                z=(xg(ind_grid(i),3)+xc(ind,3)-skip_loc(3))*scale
-!                write(SFunit_out,'(25e15.6)') aexp, d*scale_nH, &
-!                      & x*scale_l/kpc2cm,y*scale_l/kpc2cm,z*scale_l/kpc2cm, &
-!                      & mgas*scale_m,birth_epoch*scale_t, &
-!                      & sfr_ff(i),&
-!                      & alpha_oscar(i),&
-!                      & mach_oscar(i),&
-!                      & sigma_oscar(i)*scale_v/1.0d5,& !into km/s
-!                      & bturb_oscar(i),&
-! !                         & divv2_oscar(i),&
-! !                         & curlv2_oscar(i),&
-!                      & dxloc_oscar(i)*scale_l/kpc2cm
-!             endif
+             if(SFdiagnostics)then  !Oscar for VG 
+                x=(xg(ind_grid(i),1)+xc(ind,1)-skip_loc(1))*scale
+                y=(xg(ind_grid(i),2)+xc(ind,2)-skip_loc(2))*scale
+                z=(xg(ind_grid(i),3)+xc(ind,3)-skip_loc(3))*scale
+                write(SFunit_out,'(25e15.6)') aexp, d*scale_nH, &
+                      & x*scale_l/kpc2cm,y*scale_l/kpc2cm,z*scale_l/kpc2cm, &
+                      & mgas*scale_m,birth_epoch*scale_t, &
+                      & sfr_ff(i),&
+                      & alpha_oscar(i),&
+                      & mach_oscar(i),&
+                      & sigma_oscar(i)*scale_v/1.0d5,& !into km/s
+                      & bturb_oscar(i),&
+                      & dxloc_oscar(i)*scale_l/kpc2cm
+             endif
          endif
       endif
    enddo

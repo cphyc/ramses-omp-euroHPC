@@ -207,6 +207,9 @@ module amr_parameters
   logical ::momST=.false.    !S-T momentum (Blondin et al. 1998)
   logical ::SNdiagnostics=.true.
   logical ::SFdiagnostics=.true.
+  real(dp)::fboostSN =1d0  !Boost to account for CR and SN clustering. 
+  real(dp)::fboostNum =1d0 !Boost to account for advection losses
+    
   !-------------------------------------  
   
   !----------- EDGE3

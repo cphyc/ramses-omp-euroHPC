@@ -88,7 +88,7 @@ subroutine read_hydro_params(nml_ok)
        & ,vmaxFB, Tmax,smallT,Nrcool,fbsafety,maxadvfb &
        & ,radpressure,metalscaling &
        & ,supernovae,winds,momentum,energy &
-       & ,SNIamodel,Ia_rate,SNdiagnostics,t_startIa,tau_IR,tauIRmax
+       & ,SNIamodel,Ia_rate,SNdiagnostics,t_startIa,tau_IR,tauIRmax,fboostNum,fboostSN
 
   ! Cooling / basic chemistry parameters
   namelist/cooling_params/cooling,metal,isothermal,haardt_madau,J21 &
