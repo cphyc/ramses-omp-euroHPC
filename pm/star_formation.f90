@@ -9,6 +9,7 @@ subroutine star_formation(ilevel)
   use random
   use mpi_mod
   use tracer_utils, only: attach_tracer
+  use omp_lib
   implicit none
 #ifndef WITHOUTMPI
   integer::info,info2,dummy_io
@@ -70,6 +71,9 @@ subroutine star_formation(ilevel)
 #endif
   integer::imet,iii ! EDGE2 ERIC
 
+  integer,dimension(1:IRandNumSize),save :: ompseed,ompseed_tracer
+!$omp threadprivate(ompseed,ompseed_tracer)
+
   ! TODO: when f2008 is obligatory - remove this and replace erfc_pre_f08 below by
   ! the f2008 intrinsic erfc() function:
   real(dp) :: erfc_pre_f08
@@ -117,10 +121,6 @@ subroutine star_formation(ilevel)
   endif
   d0   = nISM/scale_nH
 
-  ! MC Tracer
-  tok = .false.
-  nattach = 0
-
   ! Initial star particle mass
   if(m_star < 0d0)then
      mstar=n_star*mstar_frac/(scale_nH*aexp**3)*vol_min
@@ -163,6 +163,18 @@ subroutine star_formation(ilevel)
      call rans(ncpu,iseed,allseed)
      tracer_seed=allseed(myid,1:IRandNumSize)
   end if
+
+#ifdef _OPENMP
+!$omp parallel
+  ! Give slight offsets for each OMP threads
+  ompseed=MOD(localseed+omp_get_thread_num()+1,4096)
+  ompseed_tracer=MOD(tracer_seed+omp_get_thread_num()+1,4096)
+!$omp end parallel
+#else
+  ompseed=MOD(localseed+1,4096)
+  ompseed_tracer=MOD(tracer_seed+1,4096)
+#endif
+
 
   !------------------------------------------------
   ! Convert hydro variables to primitive variables
@@ -582,7 +594,7 @@ subroutine star_formation(ilevel)
               PoissMean=mgas/mstar
               if((trel>0.).and.(.not.cosmo)) PoissMean = PoissMean*min((t/trel), 1.0d0)
               ! Compute Poisson realisation
-              call poissdev(localseed,PoissMean,nstar(i))
+              call poissdev(ompseed,PoissMean,nstar(i))
               ! Compute depleted gas mass
               mgas=nstar(i)*mstar
               ! Security to prevent more than 90% of gas depletion
@@ -679,7 +691,10 @@ subroutine star_formation(ilevel)
 
   ! Loop over grids
   ncache=active(ilevel)%ngrid
-!$omp parallel do default(private) shared(active,flag2,uold)
+!$omp parallel default(private) shared(active,flag2,uold,index_star)
+  tok(:) = .false.
+  nattach = 0
+!$omp do schedule(dynamic)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -835,7 +850,7 @@ subroutine star_formation(ilevel)
                  end if
 
                  if (nattach == nvector) then
-                    call attach_tracer(itracer, proba, xstar, istar_tracer, nattach, tracer_seed)
+                    call attach_tracer(itracer, proba, xstar, istar_tracer, nattach, ompseed_tracer)
                     nattach = 0
                     tok = .false.
                     itracer = 0
@@ -859,6 +874,8 @@ subroutine star_formation(ilevel)
      call attach_tracer(itracer, proba, xstar, istar_tracer, nattach, tracer_seed)
      nattach = 0
   end if
+!$omp end parallel
+
   !---------------------------------------------------------
   ! Convert hydro variables back to conservative variables
   !---------------------------------------------------------
