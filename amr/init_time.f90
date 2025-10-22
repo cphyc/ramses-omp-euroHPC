@@ -997,7 +997,7 @@ subroutine init_yields()
   
   ! SNII
   !write(*,*) "Initialize SNII yields" 
-  open(fileunit, file = SNIIyieldfile, status = 'old')
+  open(newunit=fileunit, file = SNIIyieldfile, status = 'old')
   read(fileunit,*) n_elements, nmet_SNII, nmass_SNII
   allocate(SNII_yields(nmetals,nmet_SNII,nmass_SNII))
   allocate(ytable_met_SNII(nmet_SNII))
@@ -1085,7 +1085,7 @@ subroutine init_yields()
    
   ! OB winds
   !write(*,*) "Initialize OB yields" 
-  open(fileunit, file = OByieldfile, status = 'old')
+  open(newunit=fileunit, file = OByieldfile, status = 'old')
   read(fileunit,*) n_elements, nmet_OBwind, nmass_OBwind
   allocate(OBwind_yields(nmetals,nmet_OBwind,nmass_OBwind))
   allocate(ytable_met_OBwind(nmet_OBwind))
@@ -1172,7 +1172,7 @@ subroutine init_yields()
   close(fileunit)
 
   ! SNIa
-  open(fileunit,file=SNIayieldfile,status='old')
+  open(newunit=fileunit,file=SNIayieldfile,status='old')
   read(fileunit,*) n_elements
   
   allocate(SNIa_yields(nmetals))
