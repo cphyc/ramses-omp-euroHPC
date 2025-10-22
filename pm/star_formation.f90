@@ -53,11 +53,11 @@ subroutine star_formation(ilevel)
 !  real(dp),dimension(1:nvector)::sfr_ff
   real(dp),dimension(1:nvector)::sfr_ff,alpha_oscar,mach_oscar,sigma_oscar,bturb_oscar,divv2_oscar,curlv2_oscar,dxloc_oscar
   integer ,dimension(1:ncpu,1:IRandNumSize)::allseed
-  integer ,dimension(1:nvector),save::ind_grid,ind_cell,ind_cell2,nstar
-  integer ,dimension(1:nvector),save::ind_grid_new,ind_cell_new,ind_part
-  integer ,dimension(1:nvector),save::ind_debris
+  integer ,dimension(1:nvector)::ind_grid,ind_cell,ind_cell2,nstar
+  integer ,dimension(1:nvector)::ind_grid_new,ind_cell_new,ind_part
+  integer ,dimension(1:nvector)::ind_debris
   integer ,dimension(1:nvector,0:twondim)::ind_nbor
-  logical ,dimension(1:nvector),save::ok,ok_new=.true.
+  logical ,dimension(1:nvector)::ok,ok_new=.true.
   integer ,dimension(1:ncpu)::ntot_star_cpu,ntot_star_all
   character(LEN=80)::filename,filedir,fileloc,filedirini
   character(LEN=5)::nchar,ncharcpu
@@ -159,11 +159,16 @@ subroutine star_formation(ilevel)
      call rans(ncpu,iseed,allseed)
      localseed=allseed(myid,1:IRandNumSize)
   end if
+  if (tracer_seed(1)==-1) then
+     call rans(ncpu,iseed,allseed)
+     tracer_seed=allseed(myid,1:IRandNumSize)
+  end if
 
   !------------------------------------------------
   ! Convert hydro variables to primitive variables
   !------------------------------------------------
   ncache=active(ilevel)%ngrid
+!$omp parallel do private(ngrid,i,ind_grid,iskip,d,u,v,w,e)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -225,6 +230,26 @@ subroutine star_formation(ilevel)
   ndebris_tot=0
   ! Loop over grids
   ncache=active(ilevel)%ngrid
+!$omp parallel do default(none) &
+!$omp & private(ngrid, i, ind_grid, ind, ind_cell, iskip, ok, d, T2, nH, &
+!$omp &         T_poly, tdec, cs2, cs2_poly, ncell, ind_cell2, ind_nbor, &
+!$omp &         d1, d2, d3, d4, d5, d6, sigma2, sigma2_comp, sigma2_sole, &
+!$omp &         trgv, divv, curlva, curlvb, curlvc, flong, ul, ur, fl, fr, &
+!$omp &         ftot, curlv, divv2, curlv2, sfr_ff, alpha0, zeta, b_turb, &
+!$omp &         phi_t, phi_x, sigs, scrit, theta, lapld, t_dyn, t_ff, nstar, &
+!$omp &         mcell, tstar, mgas, PoissMean, nstar_corrected, x, y, z, &
+!$omp &         alpha_oscar, mach_oscar, sigma_oscar, bturb_oscar, &
+!$omp &         dxloc_oscar, pcomp) &
+!$omp & shared(active, uold, flag2, d0, &
+!$omp &        temp_star, T2_star, nISM, g_star, gamma, scale_T2, scale_nH, &
+!$omp &        sf_virial, sf_tdiss, sf_compressive, ivirial1, ivirial2, &
+!$omp &        dtold, smallr, smallc, dx_loc, factG, sf_model, eps_star, f, &
+!$omp &        SFdiagnostics, SFunit_out, aexp, scale_l, scale_m, scale_t, &
+!$omp &        xg, xc, skip_loc, scale, localseed, mstar, dstar, vol_loc, &
+!$omp &        dtnew, trel, cosmo, t, f_w, scale_v, ncoarse, ngridmax, &
+!$omp &        imetal, nmetals, inener, ivar_refine, var_cut_refine, &
+!$omp &        ilevel, son, birth_epoch, ncache) &
+!$omp & reduction(+:ntot, ndebris_tot, mstar_tot, mstar_lost)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -654,6 +679,7 @@ subroutine star_formation(ilevel)
 
   ! Loop over grids
   ncache=active(ilevel)%ngrid
+!$omp parallel do default(private) shared(active,flag2,uold)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -837,6 +863,8 @@ subroutine star_formation(ilevel)
   ! Convert hydro variables back to conservative variables
   !---------------------------------------------------------
   ncache=active(ilevel)%ngrid
+
+!$omp parallel do default(private) shared(active,uold)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
