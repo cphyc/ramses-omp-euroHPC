@@ -81,10 +81,10 @@ subroutine star_formation(ilevel)
   ! MC Tracer patch
   integer :: nattach, ip, ipart
   real(dp) :: delta_m_over_m
-  logical, dimension(1:nvector), save :: tok
-  integer, dimension(1:nvector), save :: itracer, istar_tracer
-  real(dp), dimension(1:nvector, 1:3), save :: xstar
-  real(dp), dimension(1:nvector), save :: proba
+  logical, dimension(1:nvector) :: tok
+  integer, dimension(1:nvector) :: itracer, istar_tracer
+  real(dp), dimension(1:nvector, 1:3) :: xstar
+  real(dp), dimension(1:nvector) :: proba
   logical :: move_tracer
   ! End MC Tracer patch
   if(numbtot(1,ilevel)==0) return
