@@ -912,7 +912,7 @@ subroutine init_yields()
 
   ! AGB winds
   !write(*,*) "Initialize AGB yields" 
-  open(fileunit, file = AGByieldfile, status = 'old')
+  open(newunit=fileunit, file = AGByieldfile, status = 'old')
   read(fileunit,*) n_elements, nmet_AGB, nmass_AGB
   allocate(AGB_yields(nmetals,nmet_AGB,nmass_AGB))
   allocate(ytable_met_AGB(nmet_AGB))
