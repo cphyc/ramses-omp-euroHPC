@@ -27,7 +27,7 @@ subroutine thermal_feedback(ilevel)
    integer ,dimension(1:ncpu,1:IRandNumSize)::allseed
 
    integer,dimension(1:IRandNumSize), save ::  ompseed, ompseed_tracer
-!$omp threadprivate(ompseed, ompseed_tracer)
+! !$omp threadprivate(ompseed, ompseed_tracer)
 
    type(part_t) :: star_tracer_type
 
@@ -51,11 +51,11 @@ subroutine thermal_feedback(ilevel)
    end if
 
 #ifdef _OPENMP
-!$omp parallel
+! !$omp parallel
   ! Give slight offsets for each OMP threads
   ompseed=MOD(localseed+omp_get_thread_num()+1, 4096)
   ompseed_tracer=mod(tracer_seed+omp_get_thread_num()+1,4096)
-!$omp end parallel
+! !$omp end parallel
 #else
   ompseed=MOD(localseed+1,4096)
   ompseed_tracer=mod(tracer_seed+1,4096)
@@ -65,10 +65,10 @@ subroutine thermal_feedback(ilevel)
    ! Gather star particles only
 
    ! Loop over grid
-!$omp parallel private(ig,ip,igrid,npart1,npart2,ipart,jpart,next_part,ind_grid,ind_part,ind_grid_part)
+! !$omp parallel private(ig,ip,igrid,npart1,npart2,ipart,jpart,next_part,ind_grid,ind_part,ind_grid_part)
    ig = 0
    ip = 0
-!$omp do schedule(dynamic,nchunk)
+! !$omp do schedule(dynamic,nchunk)
    do jgrid = 1, active(ilevel)%ngrid
       igrid=active(ilevel)%igrid(jgrid)
       npart1=numbp(igrid)  ! Number of particles in the grid
@@ -123,7 +123,7 @@ subroutine thermal_feedback(ilevel)
    if (MC_tracer) then
       call yield_tracers(icpu, ilevel, star_tracer_type, ompseed_tracer)
    end if
-!$omp end parallel
+! !$omp end parallel
 
    if (MC_tracer) then
       call post_particle_yield()

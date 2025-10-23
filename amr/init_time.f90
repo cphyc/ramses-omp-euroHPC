@@ -997,7 +997,8 @@ subroutine init_yields()
   
   ! SNII
   !write(*,*) "Initialize SNII yields" 
-  open(newunit=fileunit, file = SNIIyieldfile, status = 'old')
+  fileunit=123
+  open(fileunit, file = SNIIyieldfile, status = 'old')
   read(fileunit,*) n_elements, nmet_SNII, nmass_SNII
   allocate(SNII_yields(nmetals,nmet_SNII,nmass_SNII))
   allocate(ytable_met_SNII(nmet_SNII))
