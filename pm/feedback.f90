@@ -933,10 +933,11 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
               if(agecl(i).lt.tcl)then !If clump is still intact
                  Prad(i)=(eta1+eta2*tauIR)*Lumcl(i)  !Lumcl=L1*mcl, we don't need mcl here!! dteff is accounted for above!
               else
-                 Prad(i)=0.0
-  !               tau_eff=(eta1+eta2*KappaIR*(unew(iicell,1))*dx_loc)
-  !               Prad(i)=tau_eff*Lumcl(i)  !Lumcl=L1*mcl*dteff
-  !                write(*,*) tau_eff
+                 tau_eff=(eta1+eta2*KappaIR*(unew(iicell,1))*dx_loc) 
+                 Prad(i)=tau_eff*Lumcl(i)  !Lumcl=L1*mcl*dteff
+                 if(tau_eff.le.eta1) then 
+                    Prad(i)=0.0 
+                 endif
               endif
            endif
         enddo
@@ -1084,9 +1085,16 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
      endif
   endif
 enddo
-call dict_destroy(cell_dict)
 
-flush(SNunit_out)   ! Ensure SN log is written to disk
+if (radpressure) then
+   call dict_destroy(cell_dict)
+endif
+
+if(SNdiagnostics) then
+   flush(SNunit_out)   ! Ensure SN log is written to disk
+endif
+
+
 
 end subroutine feedbk
 #endif
