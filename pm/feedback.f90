@@ -227,7 +227,7 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
   real(dp)::eta1,eta2,alpha1,alpha2,beta,Cr1,Cr2,mumax,eps_cl,tcl,Mclmin,Mclmax
   real(dp)::alpha,mtrans,tcut
   integer::irad,icenter
-  real(dp)::L1,Cr,KappaIR,KappaIR_0,tauIR,imfboost,Lum
+  real(dp)::L1,Cr,KappaIR,KappaIR_0,tauIR,imfboost,Lum,tau_eff
   integer::indpmax,iradmax
   type(DICT_STRUCT), pointer :: cell_dict
   type(DICT_DATA) :: cell_dict_data
