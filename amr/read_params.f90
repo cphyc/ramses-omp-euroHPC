@@ -22,12 +22,13 @@ subroutine read_params
   integer(kind=8)::nparttot=0
   real(kind=8)::delta_tout=0,tend=0
   real(kind=8)::delta_aout=0,aend=0
-  logical::nml_ok, info_ok, restart_file_ok
+  logical::nml_ok, info_ok, restart_file_ok, log_exist
   integer,parameter::tag=1134
   integer::mythr
 #ifndef WITHOUTMPI
   integer::dummy_io,ierr,info2
 #endif
+  character(LEN=128)::logdir,filename
 
   !--------------------------------------------------
   ! Namelist definitions
@@ -397,6 +398,49 @@ subroutine read_params
      write(*,*)'You have activate the MC tracer PIC is false.'
      call clean_stop
   end if
+
+    if(SFdiagnostics)then
+     if(myid==1)write(*,*) "SF diagnostics active"
+     ! Create directory for log files.
+     logdir = 'SF_log/'
+     call create_output_dirs(logdir)
+
+     ! Create and open log files.
+     write(filename,'("SF_", I5.5, ".dat")') myid
+     filename=trim(logdir)//trim(filename)
+     SFunit_out=5000
+     if(myid==1) write(*,*) "SF log keeps one file per CPU with unit 5000."
+     inquire(file=filename, exist=log_exist)
+     if(log_exist)then
+        open(unit=SFunit_out,file=filename,status="old",position="append",action="write")
+     else
+        open(unit=SFunit_out,file=filename,status="new",action="write")
+        write(SFunit_out,*)"# 'nstep'   'index'   'ilevel'  'rho [H/cc]'   'x [kpc]'   'y [kpc]'   'z [kpc]'   'mstar [Msun]'   'tform [s]'    'aexp'"
+     endif
+  endif
+
+  !-----------------
+  ! Supernova diagnostics
+  !-----------------
+  if(SNdiagnostics)then
+     if(myid==1)write(*,*) "SN diagnostics active"
+     ! Create directory for log files.
+     logdir = 'SN_log/'
+     call create_output_dirs(logdir)
+
+     ! Create and open log files.
+     write(filename,'("SN_", I5.5, ".dat")') myid
+     filename=trim(logdir)//trim(filename)
+     SNunit_out=5001
+     if(myid==1) write(*,*) "SN log keeps one file per CPU with unit 5001."
+     inquire(file=filename, exist=log_exist)
+     if(log_exist)then
+        open(unit=SNunit_out,file=filename,status="old",position="append",action="write")
+     else
+        open(unit=SNunit_out,file=filename,status="new",action="write")
+        write(SNunit_out,*)"# 'nstep'   'type'   'index'   'ilevel'   'numSN'   't [Myr]'   'aexp'   'age [Myr]'   'momST'   'rho [H/cc]'   'mstar [Msun]'   'Zgas'   'mp [Msun]'   'x [kpc]'   'y [kpc]'   'z [kpc]'"
+     endif
+  endif
 
   !-----------------------------------
   ! Rearrange level dependent arrays

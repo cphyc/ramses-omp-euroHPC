@@ -68,11 +68,11 @@ subroutine adaptive_loop
 
   nstep_coarse_old=nstep_coarse
 
-  if(SFdiagnostics .and. myid==1)then
-     write(SFunit_out,'("# LOGS OPENED AT: fine step = ",I7,",  t = ",E12.5,",  aexp = ",E10.3)')nstep,t,aexp
+  if(SFdiagnostics)then
+     write(SFunit_out,'("# SF LOGS OPENED AT: fine step = ",I7,",  t = ",E12.5,",  aexp = ",E10.3)')nstep,t,aexp
   endif
-  if(SNdiagnostics .and. myid==1)then
-     write(SNunit_out,'("# LOGS OPENED AT: fine step = ",I7,",  t = ",E12.5,",  aexp = ",E10.3)')nstep,t,aexp
+  if(SNdiagnostics)then
+     write(SNunit_out,'("# SN LOGS OPENED AT: fine step = ",I7,",  t = ",E12.5,",  aexp = ",E10.3)')nstep,t,aexp
   endif
 
   if(myid==1)write(*,*)'Starting time integration'
