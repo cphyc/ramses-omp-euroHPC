@@ -79,7 +79,7 @@ GITREMOTE = $(shell git config --get branch.$(GITBRANCH).remote)
 GITREPO = $(shell git config --get remote.$(GITREMOTE).url)
 BUILDDATE = $(shell date +"%D-%T")
 DEFINES = -DNVECTOR=$(NVECTOR) -DNDIM=$(NDIM) -DNPRE=$(NPRE) -DNENER=$(NENER) -DNVAR=$(NVAR) \
-          -DSOLVER$(SOLVER)
+          -DSOLVER$(SOLVER) -DOUTPUT_PARTICLE_POTENTIAL
 ifeq ($(USE_OLD_MPI_INCLUDE),1)
 DEFINES += -DMPI_OLD
 endif
@@ -296,6 +296,9 @@ write_makefile.o: FORCE
 write_patch.o: FORCE
 	 ../utils/scripts/cr_write_patch.sh $(PATCH)
 	 $(F90) $(FFLAGS) -c write_patch.f90 -o $@
+
+init_hydro.o: init_hydro.f90
+	$(F90) $(FFLAGS) -c $^ -o $@ $(LIBS_OBJ) -O0
 %.o:%.F
 	$(F90) $(FFLAGS) -c $^ -o $@ $(LIBS_OBJ)
 %.o:%.f90
