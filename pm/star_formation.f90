@@ -37,7 +37,7 @@ subroutine star_formation(ilevel)
   logical ::ok_free
   real(dp)::d,x,y,z,u,v,w,e,tg
   real(dp), dimension(1:nmetals)::zg ! ERIC
-  real(dp)::mstar,dstar,tstar,nISM,nCOM,phi_t,phi_x,theta,sigs,scrit,b_turb,zeta
+  real(dp)::mstar,dstar,tstar,nISM,nCOM,phi_t,phi_x,theta,sigs,scrit,b_turb,zeta,xpos,ypos,zpos
   real(dp)::T2,nH,T_poly,cs2,cs2_poly,trel,t_dyn,t_ff,tdec,uvar
   real(dp)::ul,ur,fl,fr,trgv,alpha0
   real(dp)::sigma2,sigma2_comp,sigma2_sole,lapld,flong,ftot,pcomp=0.3d0
@@ -50,7 +50,7 @@ subroutine star_formation(ilevel)
   real(kind=8)::PoissMean
   real(dp),dimension(1:3)::skip_loc
   real(dp)::dx,dx_loc,scale,vol_loc,dx_min,vol_min,d1,d2,d3,d4,d5,d6
-  real(dp)::mdebris
+  real(dp)::mdebris,mach2
 !  real(dp),dimension(1:nvector)::sfr_ff
   real(dp),dimension(1:nvector)::sfr_ff,alpha_oscar,mach_oscar,sigma_oscar,bturb_oscar,divv2_oscar,curlv2_oscar,dxloc_oscar
   integer ,dimension(1:ncpu,1:IRandNumSize)::allseed
@@ -72,7 +72,7 @@ subroutine star_formation(ilevel)
   integer::imet,iii ! EDGE2 ERIC
 
   integer,dimension(1:IRandNumSize),save :: ompseed,ompseed_tracer
-!$omp threadprivate(ompseed,ompseed_tracer)
+! !$omp threadprivate(ompseed,ompseed_tracer)
 
   ! TODO: when f2008 is obligatory - remove this and replace erfc_pre_f08 below by
   ! the f2008 intrinsic erfc() function:
@@ -165,11 +165,11 @@ subroutine star_formation(ilevel)
   end if
 
 #ifdef _OPENMP
-!$omp parallel
+! !$omp parallel
   ! Give slight offsets for each OMP threads
   ompseed=MOD(localseed+omp_get_thread_num()+1,4096)
   ompseed_tracer=MOD(tracer_seed+omp_get_thread_num()+1,4096)
-!$omp end parallel
+! !$omp end parallel
 #else
   ompseed=MOD(localseed+1,4096)
   ompseed_tracer=MOD(tracer_seed+1,4096)
@@ -180,7 +180,7 @@ subroutine star_formation(ilevel)
   ! Convert hydro variables to primitive variables
   !------------------------------------------------
   ncache=active(ilevel)%ngrid
-!$omp parallel do private(ngrid,i,ind_grid,iskip,d,u,v,w,e)
+! !$omp parallel do private(ngrid,i,ind_grid,iskip,d,u,v,w,e)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -242,26 +242,26 @@ subroutine star_formation(ilevel)
   ndebris_tot=0
   ! Loop over grids
   ncache=active(ilevel)%ngrid
-!$omp parallel do default(none) &
-!$omp & private(ngrid, i, ind_grid, ind, ind_cell, iskip, ok, d, T2, nH, &
-!$omp &         T_poly, tdec, cs2, cs2_poly, ncell, ind_cell2, ind_nbor, &
-!$omp &         d1, d2, d3, d4, d5, d6, sigma2, sigma2_comp, sigma2_sole, &
-!$omp &         trgv, divv, curlva, curlvb, curlvc, flong, ul, ur, fl, fr, &
-!$omp &         ftot, curlv, divv2, curlv2, sfr_ff, alpha0, zeta, b_turb, &
-!$omp &         phi_t, phi_x, sigs, scrit, theta, lapld, t_dyn, t_ff, nstar, &
-!$omp &         mcell, tstar, mgas, PoissMean, nstar_corrected, x, y, z, &
-!$omp &         alpha_oscar, mach_oscar, sigma_oscar, bturb_oscar, &
-!$omp &         dxloc_oscar, pcomp) &
-!$omp & shared(active, uold, flag2, d0, &
-!$omp &        temp_star, T2_star, nISM, g_star, gamma, scale_T2, scale_nH, &
-!$omp &        sf_virial, sf_tdiss, sf_compressive, ivirial1, ivirial2, &
-!$omp &        dtold, smallr, smallc, dx_loc, factG, sf_model, eps_star, f, &
-!$omp &        SFdiagnostics, SFunit_out, aexp, scale_l, scale_m, scale_t, &
-!$omp &        xg, xc, skip_loc, scale, localseed, mstar, dstar, vol_loc, &
-!$omp &        dtnew, trel, cosmo, t, f_w, scale_v, ncoarse, ngridmax, &
-!$omp &        imetal, nmetals, inener, ivar_refine, var_cut_refine, &
-!$omp &        ilevel, son, birth_epoch, ncache) &
-!$omp & reduction(+:ntot, ndebris_tot, mstar_tot, mstar_lost)
+! !$omp parallel do default(none) &
+! !$omp & private(ngrid, i, ind_grid, ind, ind_cell, iskip, ok, d, T2, nH, &
+! !$omp &         T_poly, tdec, cs2, cs2_poly, ncell, ind_cell2, ind_nbor, &
+! !$omp &         d1, d2, d3, d4, d5, d6, sigma2, sigma2_comp, sigma2_sole, &
+! !$omp &         trgv, divv, curlva, curlvb, curlvc, flong, ul, ur, fl, fr, &
+! !$omp &         ftot, curlv, divv2, curlv2, sfr_ff, alpha0, zeta, b_turb, &
+! !$omp &         phi_t, phi_x, sigs, scrit, theta, lapld, t_dyn, t_ff, nstar, &
+! !$omp &         mcell, tstar, mgas, PoissMean, nstar_corrected, x, y, z, &
+! !$omp &         alpha_oscar, mach_oscar, sigma_oscar, bturb_oscar, &
+! !$omp &         dxloc_oscar, pcomp) &
+! !$omp & shared(active, uold, flag2, d0, &
+! !$omp &        temp_star, T2_star, nISM, g_star, gamma, scale_T2, scale_nH, &
+! !$omp &        sf_virial, sf_tdiss, sf_compressive, ivirial1, ivirial2, &
+! !$omp &        dtold, smallr, smallc, dx_loc, factG, sf_model, eps_star, f, &
+! !$omp &        SFdiagnostics, SFunit_out, aexp, scale_l, scale_m, scale_t, &
+! !$omp &        xg, xc, skip_loc, scale, localseed, mstar, dstar, vol_loc, &
+! !$omp &        dtnew, trel, cosmo, t, f_w, scale_v, ncoarse, ngridmax, &
+! !$omp &        imetal, nmetals, inener, ivar_refine, var_cut_refine, &
+! !$omp &        ilevel, son, birth_epoch, ncache) &
+! !$omp & reduction(+:ntot, ndebris_tot, mstar_tot, mstar_lost)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -458,6 +458,8 @@ subroutine star_formation(ilevel)
                        CASE (1)
                           ! Virial parameter
                           alpha0    = (5.0d0*sigma2)/(pi*factG*d*dx_loc**2)
+                          mach2 = sigma2/cs2
+                                                
                           ! Turbulent forcing parameter (Federrath 2008 & 2010)
                           if(pcomp*ndim-1.0d0 == 0d0) then
                              zeta   = 0.5d0
@@ -480,10 +482,17 @@ subroutine star_formation(ilevel)
                           ! Best fit values to the Multi-ff KM model (Hydro)
                           phi_t     = 0.49d0
                           phi_x     = 0.19d0
-                          sigs      = log(1.0d0+(b_turb**2)*(sigma2/cs2))
-                          scrit     = log(((pi**2)/5.)*(phi_x**2)*alpha0*(sigma2/cs2))
+                          !              sigs      = log(1.0d0+(b_turb**2)*(sigma2/cs2))
+                          !             scrit     = log(((pi**2)/5.)*(phi_x**2)*alpha0*(sigma2/cs2))
+                          ! Decalibrated model - Kretschmer and Teyssier
+                          sigs      = log(1.0d0+(b_turb**2)*(mach2))
+                          scrit     = log(alpha0*(1.+(2.*mach2**2)/(1.+mach2)))
+
 #endif
-                          sfr_ff(i) = (eps_star*phi_t/2.0d0)*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc_pre_f08((sigs-scrit)/sqrt(2.0d0*sigs)))
+                          !sfr_ff(i) = (eps_star*phi_t/2.0d0)*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc_pre_f08((sigs-scrit)/sqrt(2.0d0*sigs)))
+                          ! Decalibrated model - Kretschmer and Teyssier
+                          sfr_ff(i) = eps_star*0.5*exp(3.0d0/8.0d0*sigs)*(2.0d0-erfc((sigs-scrit)/sqrt(2.0d0*sigs)))
+                          
                           if(SFdiagnostics)then  !Oscar for VG
                              alpha_oscar(i)=alpha0
                              mach_oscar(i)=(sigma2/cs2)**0.5
@@ -609,11 +618,11 @@ subroutine star_formation(ilevel)
                  ntot=ntot+1
                  if(f_w>0)ndebris_tot=ndebris_tot+1
                  if(SFdiagnostics)then  !Oscar for VG 
-                    x=(xg(ind_grid(i),1)+xc(ind,1)-skip_loc(1))*scale
-                    y=(xg(ind_grid(i),2)+xc(ind,2)-skip_loc(2))*scale
-                    z=(xg(ind_grid(i),3)+xc(ind,3)-skip_loc(3))*scale
+                    xpos=(xg(ind_grid(i),1)+xc(ind,1)-skip_loc(1))*scale
+                    ypos=(xg(ind_grid(i),2)+xc(ind,2)-skip_loc(2))*scale
+                    zpos=(xg(ind_grid(i),3)+xc(ind,3)-skip_loc(3))*scale
                     write(SFunit_out,'(25e15.6)') aexp, d*scale_nH, &
-                         & x*scale_l/kpc2cm,y*scale_l/kpc2cm,z*scale_l/kpc2cm, &
+                         & xpos*scale_l/kpc2cm,ypos*scale_l/kpc2cm,zpos*scale_l/kpc2cm, &
                          & mgas*scale_m,birth_epoch*scale_t, &
                          & sfr_ff(i),&
                          & alpha_oscar(i),&
@@ -691,10 +700,10 @@ subroutine star_formation(ilevel)
 
   ! Loop over grids
   ncache=active(ilevel)%ngrid
-!$omp parallel default(private) shared(active,flag2,uold,index_star)
+! !$omp parallel default(private) shared(active,flag2,uold,index_star)
   tok(:) = .false.
   nattach = 0
-!$omp do schedule(dynamic)
+! !$omp do schedule(dynamic)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -874,14 +883,14 @@ subroutine star_formation(ilevel)
      call attach_tracer(itracer, proba, xstar, istar_tracer, nattach, tracer_seed)
      nattach = 0
   end if
-!$omp end parallel
+! !$omp end parallel
 
   !---------------------------------------------------------
   ! Convert hydro variables back to conservative variables
   !---------------------------------------------------------
   ncache=active(ilevel)%ngrid
 
-!$omp parallel do default(private) shared(active,uold)
+! !$omp parallel do default(private) shared(active,uold)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid

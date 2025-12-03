@@ -27,7 +27,7 @@ subroutine thermal_feedback(ilevel)
    integer ,dimension(1:ncpu,1:IRandNumSize)::allseed
 
    integer,dimension(1:IRandNumSize), save ::  ompseed, ompseed_tracer
-!$omp threadprivate(ompseed, ompseed_tracer)
+! !$omp threadprivate(ompseed, ompseed_tracer)
 
    type(part_t) :: star_tracer_type
 
@@ -51,11 +51,11 @@ subroutine thermal_feedback(ilevel)
    end if
 
 #ifdef _OPENMP
-!$omp parallel
+! !$omp parallel
   ! Give slight offsets for each OMP threads
   ompseed=MOD(localseed+omp_get_thread_num()+1, 4096)
   ompseed_tracer=mod(tracer_seed+omp_get_thread_num()+1,4096)
-!$omp end parallel
+! !$omp end parallel
 #else
   ompseed=MOD(localseed+1,4096)
   ompseed_tracer=mod(tracer_seed+1,4096)
@@ -65,10 +65,10 @@ subroutine thermal_feedback(ilevel)
    ! Gather star particles only
 
    ! Loop over grid
-!$omp parallel private(ig,ip,igrid,npart1,npart2,ipart,jpart,next_part,ind_grid,ind_part,ind_grid_part)
+! !$omp parallel private(ig,ip,igrid,npart1,npart2,ipart,jpart,next_part,ind_grid,ind_part,ind_grid_part)
    ig = 0
    ip = 0
-!$omp do schedule(dynamic,nchunk)
+! !$omp do schedule(dynamic,nchunk)
    do jgrid = 1, active(ilevel)%ngrid
       igrid=active(ilevel)%igrid(jgrid)
       npart1=numbp(igrid)  ! Number of particles in the grid
@@ -123,7 +123,7 @@ subroutine thermal_feedback(ilevel)
    if (MC_tracer) then
       call yield_tracers(icpu, ilevel, star_tracer_type, ompseed_tracer)
    end if
-!$omp end parallel
+! !$omp end parallel
 
    if (MC_tracer) then
       call post_particle_yield()
@@ -227,7 +227,7 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
   real(dp)::eta1,eta2,alpha1,alpha2,beta,Cr1,Cr2,mumax,eps_cl,tcl,Mclmin,Mclmax
   real(dp)::alpha,mtrans,tcut
   integer::irad,icenter
-  real(dp)::L1,Cr,KappaIR,KappaIR_0,tauIR,imfboost,Lum
+  real(dp)::L1,Cr,KappaIR,KappaIR_0,tauIR,imfboost,Lum,tau_eff
   integer::indpmax,iradmax
   type(DICT_STRUCT), pointer :: cell_dict
   type(DICT_DATA) :: cell_dict_data
@@ -934,10 +934,11 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
               if(agecl(i).lt.tcl)then !If clump is still intact
                  Prad(i)=(eta1+eta2*tauIR)*Lumcl(i)  !Lumcl=L1*mcl, we don't need mcl here!! dteff is accounted for above!
               else
-                 Prad(i)=0.0
-  !               tau_eff=(eta1+eta2*KappaIR*(unew(iicell,1))*dx_loc)
-  !               Prad(i)=tau_eff*Lumcl(i)  !Lumcl=L1*mcl*dteff
-  !                write(*,*) tau_eff
+                 tau_eff=(eta1+eta2*KappaIR*(unew(iicell,1))*dx_loc) 
+                 Prad(i)=tau_eff*Lumcl(i)  !Lumcl=L1*mcl*dteff
+                 if(tau_eff.le.eta1) then 
+                    Prad(i)=0.0 
+                 endif
               endif
            endif
         enddo
@@ -1085,9 +1086,16 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
      endif
   endif
 enddo
-call dict_destroy(cell_dict)
 
-flush(SNunit_out)   ! Ensure SN log is written to disk
+if (radpressure) then
+   call dict_destroy(cell_dict)
+endif
+
+if(SNdiagnostics) then
+   flush(SNunit_out)   ! Ensure SN log is written to disk
+endif
+
+
 
 end subroutine feedbk
 #endif
