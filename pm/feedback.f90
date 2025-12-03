@@ -425,6 +425,7 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
   end do
 
   ! Compute parent cell adresses
+  indpmax=0
   do j=1,np
      if(ok(j))then
         indp(j)=ncoarse+(icell(j)-1)*ngridmax+igrid(j)
