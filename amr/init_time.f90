@@ -298,7 +298,7 @@ subroutine init_time
   end if
 #endif
 
-  if(metal.ne.0)then 
+  if(metal.ne.0)then
      if(myid==1)write(*,*)'Initializing yields'
      call init_yields()
      if(myid==1)then
@@ -430,7 +430,7 @@ subroutine init_file
              & xoff2(ilevel),&
              & xoff3(ilevel)
      end do
-  end if  
+  end if
 
 end subroutine init_file
 
@@ -905,14 +905,15 @@ subroutine init_yields()
   implicit none
   integer :: im,iz,imet,atomic_nr,ielement,n_elements,fileunit
   character(len=3)::element
-  real(dp):: Ia_yield 
+  real(dp):: Ia_yield
   real(dp),dimension(:),allocatable:: mloss_element
+  real(dp),dimension(:),allocatable:: slice
 
   allocate(met_keys(nmetals))
 
   ! AGB winds
-  !write(*,*) "Initialize AGB yields" 
-  open(fileunit, file = AGByieldfile, status = 'old')
+  !write(*,*) "Initialize AGB yields"
+  open(newunit=fileunit, file = AGByieldfile, status = 'old')
   read(fileunit,*) n_elements, nmet_AGB, nmass_AGB
   allocate(AGB_yields(nmetals,nmet_AGB,nmass_AGB))
   allocate(ytable_met_AGB(nmet_AGB))
@@ -922,7 +923,8 @@ subroutine init_yields()
   read(fileunit,*) ytable_mass_AGB(:)
 
   AGB_yields=0.d0
- 
+
+  allocate(slice(nmass_AGB))
   do imet=1,nmetals
      rewind(fileunit)
      read(fileunit,*)
@@ -933,7 +935,8 @@ subroutine init_yields()
         if(atomic_nr.eq.metal_list(imet))then
            met_keys(imet)=trim(element)
            do iz=1, nmet_AGB
-              read(fileunit,*)AGB_yields(imet,iz,:)
+              read(fileunit,*)slice
+              AGB_yields(imet,iz,:)=slice
            enddo
         else
            do iz=1, nmet_AGB
@@ -942,7 +945,8 @@ subroutine init_yields()
         endif
      enddo
   enddo
-  
+  deallocate(slice)
+
   ! Ensure no negative yields
   do imet=1,nmetals
      do iz=1,nmet_AGB
@@ -994,20 +998,21 @@ subroutine init_yields()
      AGB_yields(1,:,:)=AGB_mloss-AGB_yields(1,:,:)
   endif
   close(fileunit)
-  
+
   ! SNII
-  !write(*,*) "Initialize SNII yields" 
-  open(fileunit, file = SNIIyieldfile, status = 'old')
+  !write(*,*) "Initialize SNII yields"
+  open(newunit=fileunit, file = SNIIyieldfile, status = 'old')
   read(fileunit,*) n_elements, nmet_SNII, nmass_SNII
   allocate(SNII_yields(nmetals,nmet_SNII,nmass_SNII))
   allocate(ytable_met_SNII(nmet_SNII))
   allocate(ytable_mass_SNII(nmass_SNII))
-  
+
   read(fileunit,*) ytable_met_SNII(:)
   read(fileunit,*) ytable_mass_SNII(:)
-  
+
   SNII_yields=0.d0
 
+  allocate(slice(nmass_SNII))
   do imet=1,nmetals
      rewind(fileunit)
      read(fileunit,*)
@@ -1021,7 +1026,8 @@ subroutine init_yields()
               call clean_stop
            endif
            do iz=1, nmet_SNII
-              read(fileunit,*) SNII_yields(imet,iz,:)
+              read(fileunit,*)slice
+              SNII_yields(imet,iz,:)=slice
            enddo
         else
            do iz=1, nmet_SNII
@@ -1030,7 +1036,8 @@ subroutine init_yields()
         endif
      enddo
   enddo
-  
+  deallocate(slice)
+
   ! Ensure no negative yields
   do imet=1,nmetals
      do iz=1,nmet_SNII
@@ -1039,7 +1046,7 @@ subroutine init_yields()
         enddo
      enddo
   enddo
-  
+
   rewind(fileunit)
   read(fileunit,*)
   read(fileunit,*)
@@ -1055,7 +1062,7 @@ subroutine init_yields()
      enddo
   enddo
   deallocate(mloss_element)
-  
+
   if(metal.eq.2)then
      ! Load yields for metallicity variable
      rewind(fileunit)
@@ -1082,20 +1089,21 @@ subroutine init_yields()
      SNII_yields(1,:,:)=SNII_mloss-SNII_yields(1,:,:)
   endif
   close(fileunit)
-   
+
   ! OB winds
-  !write(*,*) "Initialize OB yields" 
-  open(fileunit, file = OByieldfile, status = 'old')
+  !write(*,*) "Initialize OB yields"
+  open(newunit=fileunit, file = OByieldfile, status = 'old')
   read(fileunit,*) n_elements, nmet_OBwind, nmass_OBwind
   allocate(OBwind_yields(nmetals,nmet_OBwind,nmass_OBwind))
   allocate(ytable_met_OBwind(nmet_OBwind))
   allocate(ytable_mass_OBwind(nmass_OBwind))
-  
+
   read(fileunit,*) ytable_met_OBwind(:)
   read(fileunit,*) ytable_mass_OBwind(:)
-  
+
   OBwind_yields=0.d0
 
+  allocate(slice(nmass_OBwind))
   do imet=1,nmetals
      rewind(fileunit)
      read(fileunit,*)
@@ -1109,7 +1117,8 @@ subroutine init_yields()
               call clean_stop
            endif
            do iz=1, nmet_OBwind
-              read(fileunit,*) OBwind_yields(imet,iz,:)
+              read(fileunit,*)slice
+              OBwind_yields(imet,iz,:)=slice
            enddo
         else
            do iz=1, nmet_OBwind
@@ -1118,7 +1127,8 @@ subroutine init_yields()
         endif
      enddo
   enddo
-  
+  deallocate(slice)
+
   ! Ensure no negative yields
   do imet=1,nmetals
      do iz=1,nmet_OBwind
@@ -1127,7 +1137,7 @@ subroutine init_yields()
         enddo
      enddo
   enddo
-  
+
   rewind(fileunit)
   read(fileunit,*)
   read(fileunit,*)
@@ -1143,7 +1153,7 @@ subroutine init_yields()
      enddo
   enddo
   deallocate(mloss_element)
-  
+
   if(metal.eq.2)then
      ! Load yields for metallicity variable
      rewind(fileunit)
@@ -1168,20 +1178,20 @@ subroutine init_yields()
      ! Convert from H+He to Z
      met_keys(1)="Z"
      OBwind_yields(1,:,:)=OBwind_mloss-OBwind_yields(1,:,:)
-  endif  
+  endif
   close(fileunit)
 
   ! SNIa
-  open(fileunit,file=SNIayieldfile,status='old')
+  open(newunit=fileunit,file=SNIayieldfile,status='old')
   read(fileunit,*) n_elements
-  
+
   allocate(SNIa_yields(nmetals))
   SNIa_yields=0.d0
-  
+
   do imet=1,nmetals
      rewind(fileunit)
      read(fileunit,*)
-      
+
      do ielement=1,n_elements
         read(fileunit,*) element, atomic_nr, Ia_yield
         if(atomic_nr.eq.metal_list(imet))then
@@ -1199,7 +1209,7 @@ subroutine init_yields()
   endif
 
   close(fileunit)
-  
+
 end subroutine
 
 
