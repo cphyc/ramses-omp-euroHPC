@@ -68,10 +68,10 @@ subroutine adaptive_loop
 
   nstep_coarse_old=nstep_coarse
 
-  if(SFdiagnostics)then
+  if(SFdiagnostics .and. myid==1)then
      write(SFunit_out,'("# LOGS OPENED AT: fine step = ",I7,",  t = ",E12.5,",  aexp = ",E10.3)')nstep,t,aexp
   endif
-  if(SNdiagnostics)then
+  if(SNdiagnostics .and. myid==1)then
      write(SNunit_out,'("# LOGS OPENED AT: fine step = ",I7,",  t = ",E12.5,",  aexp = ",E10.3)')nstep,t,aexp
   endif
 
