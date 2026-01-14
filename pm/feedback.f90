@@ -27,7 +27,7 @@ subroutine thermal_feedback(ilevel)
    integer ,dimension(1:ncpu,1:IRandNumSize)::allseed
 
    integer,dimension(1:IRandNumSize), save ::  ompseed, ompseed_tracer
-! !$omp threadprivate(ompseed, ompseed_tracer)
+!$omp threadprivate(ompseed, ompseed_tracer)
 
    type(part_t) :: star_tracer_type
 
@@ -51,24 +51,26 @@ subroutine thermal_feedback(ilevel)
    end if
 
 #ifdef _OPENMP
-! !$omp parallel
+!$omp parallel
   ! Give slight offsets for each OMP threads
   ompseed=MOD(localseed+omp_get_thread_num()+1, 4096)
   ompseed_tracer=mod(tracer_seed+omp_get_thread_num()+1,4096)
-! !$omp end parallel
+!$omp end parallel
 #else
   ompseed=MOD(localseed+1,4096)
   ompseed_tracer=mod(tracer_seed+1,4096)
 #endif
 
-
    ! Gather star particles only
 
    ! Loop over grid
-! !$omp parallel private(ig,ip,igrid,npart1,npart2,ipart,jpart,next_part,ind_grid,ind_part,ind_grid_part)
+!$omp parallel default(none) &
+!$omp &  private(jgrid,ig,ip,igrid,npart1,npart2,ipart,jpart,next_part, &
+!$omp &          ind_grid,ind_part,ind_grid_part) &
+!$omp &  shared(active,ilevel,numbp,headp,nextp,typep,MC_tracer,icpu,star_tracer_type)
    ig = 0
    ip = 0
-! !$omp do schedule(dynamic,nchunk)
+!$omp do schedule(dynamic,nchunk)
    do jgrid = 1, active(ilevel)%ngrid
       igrid=active(ilevel)%igrid(jgrid)
       npart1=numbp(igrid)  ! Number of particles in the grid
@@ -123,7 +125,7 @@ subroutine thermal_feedback(ilevel)
    if (MC_tracer) then
       call yield_tracers(icpu, ilevel, star_tracer_type, ompseed_tracer)
    end if
-! !$omp end parallel
+!$omp end parallel
 
    if (MC_tracer) then
       call post_particle_yield()
@@ -969,10 +971,8 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
                  do kk=1,2
                     iicell=indcube2(j,ii,jj,kk)
                     if(iicell.gt.0) then
+!$omp critical(feedback_deposition)
                        !----- Return ejected mass and associated momentum & kinetic energy. (total conserved, see standard RAMSES)
-                       ! CC: important note: we do not need to mark the section OMP atomic
-                       !     because we treat each oct on a different thread, so there is no
-                       !     race condition here.
                        if(mloss(j)>0.) then
                           unew(iicell,1)=unew(iicell,1)+mloss(j)/8.0     ! -- Spread over 8 cells
                           unew(iicell,2)=unew(iicell,2)+mloss(j)*vp(ind_part(j),1)/8.0
@@ -1054,12 +1054,14 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
                              iii=iii+1
                           enddo
                        endif
+!$omp end critical(feedback_deposition)
                     endif
                  enddo
               enddo
            enddo
      else  !-------------- drifters. Inject on parent oct.
         iicell=indp(j)
+!$omp critical(feedback_deposition)
         !----- Return ejected mass and associated kinetic energy. (total conserved, see standard RAMSES)
         if(mloss(j)>0.) then
            unew(iicell,1)=unew(iicell,1)+mloss(j)
@@ -1083,6 +1085,7 @@ subroutine feedbk(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,seed)
               iii=iii+1
            enddo
         endif
+!$omp end critical(feedback_deposition)
      endif
   endif
 enddo
