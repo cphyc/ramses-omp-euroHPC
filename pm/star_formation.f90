@@ -70,9 +70,10 @@ subroutine star_formation(ilevel)
   integer::irad
 #endif
   integer::imet,iii ! EDGE2 ERIC
+  integer::my_index_star ! Thread-local copy for atomic capture
 
   integer,dimension(1:IRandNumSize),save :: ompseed,ompseed_tracer
-! !$omp threadprivate(ompseed,ompseed_tracer)
+!$omp threadprivate(ompseed,ompseed_tracer)
 
   ! TODO: when f2008 is obligatory - remove this and replace erfc_pre_f08 below by
   ! the f2008 intrinsic erfc() function:
@@ -165,11 +166,11 @@ subroutine star_formation(ilevel)
   end if
 
 #ifdef _OPENMP
-! !$omp parallel
+!$omp parallel
   ! Give slight offsets for each OMP threads
   ompseed=MOD(localseed+omp_get_thread_num()+1,4096)
   ompseed_tracer=MOD(tracer_seed+omp_get_thread_num()+1,4096)
-! !$omp end parallel
+!$omp end parallel
 #else
   ompseed=MOD(localseed+1,4096)
   ompseed_tracer=MOD(tracer_seed+1,4096)
@@ -180,7 +181,17 @@ subroutine star_formation(ilevel)
   ! Convert hydro variables to primitive variables
   !------------------------------------------------
   ncache=active(ilevel)%ngrid
-! !$omp parallel do private(ngrid,i,ind_grid,iskip,d,u,v,w,e)
+!$omp parallel do default(none) &
+!$omp &  private(igrid,ngrid,i,ind,iskip,ind_grid,ind_cell, &
+!$omp &          d,u,v,w,e,ivar) &
+#ifdef SOLVERmhd
+!$omp &  private(bx1,by1,bz1,bx2,by2,bz2) &
+#endif
+#if NENER>0
+!$omp &  private(irad) shared(inener)  &
+#endif
+!$omp &  shared(active,uold,ncache,ncoarse,ngridmax, &
+!$omp &         ilevel,imetal)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -242,26 +253,29 @@ subroutine star_formation(ilevel)
   ndebris_tot=0
   ! Loop over grids
   ncache=active(ilevel)%ngrid
-! !$omp parallel do default(none) &
-! !$omp & private(ngrid, i, ind_grid, ind, ind_cell, iskip, ok, d, T2, nH, &
-! !$omp &         T_poly, tdec, cs2, cs2_poly, ncell, ind_cell2, ind_nbor, &
-! !$omp &         d1, d2, d3, d4, d5, d6, sigma2, sigma2_comp, sigma2_sole, &
-! !$omp &         trgv, divv, curlva, curlvb, curlvc, flong, ul, ur, fl, fr, &
-! !$omp &         ftot, curlv, divv2, curlv2, sfr_ff, alpha0, zeta, b_turb, &
-! !$omp &         phi_t, phi_x, sigs, scrit, theta, lapld, t_dyn, t_ff, nstar, &
-! !$omp &         mcell, tstar, mgas, PoissMean, nstar_corrected, x, y, z, &
-! !$omp &         alpha_oscar, mach_oscar, sigma_oscar, bturb_oscar, &
-! !$omp &         dxloc_oscar, pcomp) &
-! !$omp & shared(active, uold, flag2, d0, &
-! !$omp &        temp_star, T2_star, nISM, g_star, gamma, scale_T2, scale_nH, &
-! !$omp &        sf_virial, sf_tdiss, sf_compressive, ivirial1, ivirial2, &
-! !$omp &        dtold, smallr, smallc, dx_loc, factG, sf_model, eps_star, f, &
-! !$omp &        SFdiagnostics, SFunit_out, aexp, scale_l, scale_m, scale_t, &
-! !$omp &        xg, xc, skip_loc, scale, localseed, mstar, dstar, vol_loc, &
-! !$omp &        dtnew, trel, cosmo, t, f_w, scale_v, ncoarse, ngridmax, &
-! !$omp &        imetal, nmetals, inener, ivar_refine, var_cut_refine, &
-! !$omp &        ilevel, son, birth_epoch, ncache) &
-! !$omp & reduction(+:ntot, ndebris_tot, mstar_tot, mstar_lost)
+!$omp parallel do default(none) &
+!$omp & private(igrid, ngrid, i, ind_grid, ind, ind_cell, iskip, ok, d, T2, nH, &
+!$omp &         T_poly, tdec, cs2, cs2_poly, ncell, ind_cell2, ind_nbor, &
+!$omp &         d1, d2, d3, d4, d5, d6, sigma2, sigma2_comp, sigma2_sole, &
+!$omp &         trgv, divv, curlva, curlvb, curlvc, flong, ul, ur, fl, fr, &
+!$omp &         ftot, curlv, divv2, curlv2, sfr_ff, alpha0, zeta, b_turb, &
+!$omp &         phi_t, phi_x, sigs, scrit, theta, lapld, t_dyn, t_ff, nstar, &
+!$omp &         mcell, tstar, mgas, PoissMean, nstar_corrected, x, y, z, &
+!$omp &         alpha_oscar, mach_oscar, sigma_oscar, bturb_oscar, &
+!$omp &         dxloc_oscar, pcomp, mach2, xpos, ypos, zpos) &
+#ifdef SOLVERmhd
+!$omp & private(A, B, C, emag, beta, fbeta) &
+#endif
+!$omp & shared(active, uold, flag2, d0, &
+!$omp &        temp_star, T2_star, nISM, g_star, gamma, scale_T2, scale_nH, &
+!$omp &        sf_virial, sf_tdiss, sf_compressive, ivirial1, ivirial2, &
+!$omp &        dtold, smallr, smallc, dx_loc, factG, sf_model, eps_star, f, &
+!$omp &        SFdiagnostics, SFunit_out, aexp, scale_l, scale_m, scale_t, &
+!$omp &        xg, xc, skip_loc, scale, mstar, dstar, vol_loc, &
+!$omp &        dtnew, trel, cosmo, t, f_w, scale_v, ncoarse, ngridmax, &
+!$omp &        imetal, nmetals, inener, ivar_refine, var_cut_refine, &
+!$omp &        ilevel, son, birth_epoch, ncache) &
+!$omp & reduction(+:ntot, ndebris_tot, mstar_tot, mstar_lost)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -700,10 +714,21 @@ subroutine star_formation(ilevel)
 
   ! Loop over grids
   ncache=active(ilevel)%ngrid
-! !$omp parallel default(private) shared(active,flag2,uold,index_star)
+!$omp parallel default(none) &
+!$omp &  private(igrid,ngrid,i,ind,iskip,nnew,n,d,u,v,w,x,y,z,e,tg, &
+!$omp &          imet,iii,mdebris,ipart,ip,move_tracer,delta_m_over_m,nattach, &
+!$omp &          my_index_star,ind_grid,ind_cell,ind_grid_new,ind_cell_new, &
+!$omp &          ind_part,ind_debris,ok,ok_new,tok,itracer,istar_tracer, &
+!$omp &          zg,proba,xstar) &
+!$omp &  shared(active,flag2,uold,index_star, &
+!$omp &         ncache,xg,tp,mp,mpb,levelp,idp,typep,xp,vp,zp, &
+!$omp &         headp,numbp,nextp,partp,scale,skip_loc,xc, &
+!$omp &         scale_T2,scale_nH,scale_l,gamma,birth_epoch,ilevel, &
+!$omp &         mstar,dstar,vol_loc,f_w,eta_sn,yield,metal,nmetals,imetal, &
+!$omp &         MC_tracer,ncoarse,ngridmax,SFunit_out)
   tok(:) = .false.
   nattach = 0
-! !$omp do schedule(dynamic)
+!$omp do schedule(dynamic)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -734,17 +759,24 @@ subroutine star_formation(ilevel)
 
         ! Update linked list for stars
         call remove_free(ind_part,nnew)
+!$omp critical
         call add_list(ind_part,ind_grid_new,ok_new,nnew)
+!$omp end critical
 
         ! Update linked list for debris
         if(f_w>0)then
            call remove_free(ind_debris,nnew)
+!$omp critical
            call add_list(ind_debris,ind_grid_new,ok_new,nnew)
+!$omp end critical
         endif
 
         ! Calculate new star particle and modify gas density
         do i=1,nnew
+!$omp atomic capture
+           my_index_star=index_star
            index_star=index_star+1
+!$omp end atomic
 
            ! Get gas variables
            n=flag2(ind_cell_new(i))
@@ -769,7 +801,7 @@ subroutine star_formation(ilevel)
            mp(ind_part(i)) = n*mstar      ! Mass
            mpb(ind_part(i))=n*mstar  !Initial mass
            levelp(ind_part(i)) = ilevel   ! Level
-           idp(ind_part(i)) = index_star  ! Star identity
+           idp(ind_part(i)) = my_index_star  ! Star identity
            typep(ind_part(i))%family = FAM_STAR
            typep(ind_part(i))%tag = 0
            xp(ind_part(i),1) = x
@@ -880,17 +912,27 @@ subroutine star_formation(ilevel)
 
   ! Empty tracer part cache
   if (MC_tracer .and. nattach > 0) then
-     call attach_tracer(itracer, proba, xstar, istar_tracer, nattach, tracer_seed)
+     call attach_tracer(itracer, proba, xstar, istar_tracer, nattach, ompseed_tracer)
      nattach = 0
   end if
-! !$omp end parallel
+!$omp end parallel
 
   !---------------------------------------------------------
   ! Convert hydro variables back to conservative variables
   !---------------------------------------------------------
   ncache=active(ilevel)%ngrid
 
-! !$omp parallel do default(private) shared(active,uold)
+!$omp parallel do default(none) &
+!$omp &  private(igrid,ngrid,i,ind,iskip,ind_grid,ind_cell, &
+!$omp &          d,u,v,w,e,ivar) &
+#ifdef SOLVERmhd
+!$omp &  private(bx1,by1,bz1,bx2,by2,bz2) &
+#endif
+#if NENER>0
+!$omp &  private(irad) shared(inener)&
+#endif
+!$omp &  shared(active,uold,ncache,ncoarse,ngridmax, &
+!$omp &         ilevel,imetal)
   do igrid=1,ncache,nvector
      ngrid=MIN(nvector,ncache-igrid+1)
      do i=1,ngrid
@@ -957,9 +999,9 @@ subroutine getnbor(ind_cell,ind_father,ncell,ilevel)
   ! the input cell.
   !-----------------------------------------------------------------
   integer::i,j,iok,ind
-  integer,dimension(1:nvector),save::ind_grid_father,pos
-  integer,dimension(1:nvector,0:twondim),save::igridn,igridn_ok
-  integer,dimension(1:nvector,1:twondim),save::icelln_ok
+  integer,dimension(1:nvector)::ind_grid_father,pos
+  integer,dimension(1:nvector,0:twondim)::igridn,igridn_ok
+  integer,dimension(1:nvector,1:twondim)::icelln_ok
 
 
   if(ilevel==1)then
