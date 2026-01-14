@@ -388,7 +388,8 @@ subroutine check_tree(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
   ! For ilevel=levelmin, this should never happen.
   ! (or particle is invalid, do not move it)
   do j=1,np
-     if(igrid_son(j)==0 .or. (remove_invalid_particle .and. remove(j)))ok(j)=.false.
+   !   if(igrid_son(j)==0 .or. (remove_invalid_particle .and. remove(j)))ok(j)=.false.
+   if (igrid_son(j)==0)ok(j)=.false.
   end do
 
   ! Periodic box
@@ -414,21 +415,6 @@ subroutine check_tree(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
      end if
   end do
 
-  if(remove_invalid_particle)then
-     nremove=0
-     do j=1,np
-        if(remove(j))then
-           nremove=nremove+1
-           list4(nremove)=ind_grid(ind_grid_part(j))
-           list3(nremove)=ind_part(j)
-           write(*,*) "removed invalid particle", xp(ind_part(j),:), x0(ind_part(j),:), typep(ind_part(j))%family
-        end if
-     end do
-!$omp critical
-     call remove_list(list3,list4,ok_true,nremove)
-!$omp end critical
-     call add_free(list3,nremove)
-  end if
 !$omp critical
   call remove_list(ind_part,list1,ok,np)
   call add_list(ind_part,list2,ok,np)
@@ -758,16 +744,11 @@ subroutine virtual_tree_fine(ilevel)
 
   particle_data_width = twondim+1
   if(star.or.sink) then
-     if(metal) then
-        particle_data_width=twondim+3
+     if(metal.ne.0) then
+        particle_data_width=twondim+2+nmetals+1 ! EDGE2, nmetals + mpb
      else
         particle_data_width=twondim+2
      endif
-#ifdef NCHEM
-     particle_data_width=particle_data_width+nchem
-#endif
-     if(write_stellar_densities) particle_data_width = particle_data_width + 1
-     if(use_initial_mass) particle_data_width = particle_data_width + 1
   endif
 
 #ifdef OUTPUT_PARTICLE_POTENTIAL
@@ -1033,6 +1014,7 @@ end subroutine virtual_tree_fine
 subroutine fill_comm(ind_part,ind_com,ind_list,np,ilevel,icpu)
   use pm_commons
   use amr_commons
+  use hydro_parameters,only: nmetals ! ERIC
 #ifdef DICE
   use dice_commons
 #endif
@@ -1042,6 +1024,7 @@ subroutine fill_comm(ind_part,ind_com,ind_list,np,ilevel,icpu)
   integer::current_property
   integer::i,idim,ich
   logical,dimension(1:nvector)::ok=.true.
+  integer::imet ! ERIC
 
   ! Gather particle level and identity
   do i=1,np
@@ -1079,36 +1062,18 @@ subroutine fill_comm(ind_part,ind_com,ind_list,np,ilevel,icpu)
         reception(icpu,ilevel)%up(ind_com(i),current_property)=tp(ind_part(i))
      end do
      current_property = current_property+1
-     if(metal)then
-        do i=1,np
-           reception(icpu,ilevel)%up(ind_com(i),current_property)=zp(ind_part(i))
-        end do
-        current_property = current_property+1
-     end if
-#ifdef NCHEM
-     if(nchem>0)then
-        do ich=1,nchem
+     if(metal.ne.0)then
+        do imet=1,nmetals ! ERIC
            do i=1,np
-              reception(icpu,ilevel)%up(ind_com(i),current_property)=chp(ind_part(i),ich)
+              reception(icpu,ilevel)%up(ind_com(i),current_property)=zp(ind_part(i),imet)
            end do
            current_property = current_property+1
         end do
      end if
-#endif
-     if(write_stellar_densities) then
-        do i=1,np
-           reception(icpu,ilevel)%up(ind_com(i),current_property)  =st_n_tp(ind_part(i))
-!           reception(icpu,ilevel)%up(ind_com(i),current_property+1)=st_n_SN(ind_part(i))
-!           reception(icpu,ilevel)%up(ind_com(i),current_property+2)=st_e_SN(ind_part(i))
-        end do
-        current_property = current_property+1
-     endif
-     if(use_initial_mass)then
-        do i=1,np
-           reception(icpu,ilevel)%up(ind_com(i),current_property)=mp0(ind_part(i))
-        end do
-        current_property = current_property+1
-     end if
+     do i=1,np
+        reception(icpu,ilevel)%up(ind_com(i),current_property)=mpb(ind_part(i))
+     end do
+     current_property = current_property+1
   end if
 
 #ifdef DICE
@@ -1153,7 +1118,7 @@ end subroutine fill_comm
 subroutine empty_comm(ind_com,np,ilevel,icpu)
   use pm_commons
   use amr_commons
-  use amr_parameters,ONLY:nchem
+  use hydro_parameters,only: nmetals ! ERIC
 #ifdef DICE
   use dice_commons
 #endif
@@ -1165,6 +1130,7 @@ subroutine empty_comm(ind_com,np,ilevel,icpu)
   integer,dimension(1:nvector)::ind_list,ind_part
   logical,dimension(1:nvector)::ok=.true.
   integer::current_property
+  integer::imet ! ERIC
 
   ! Compute parent grid index
   do i=1,np
@@ -1214,36 +1180,18 @@ subroutine empty_comm(ind_com,np,ilevel,icpu)
         tp(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
      end do
      current_property = current_property+1
-     if(metal)then
-        do i=1,np
-           zp(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
-        end do
-        current_property = current_property+1
-     end if
-#ifdef NCHEM
-     if(nchem>0)then
-        do ich=1,nchem
+     if(metal.ne.0)then
+        do imet=1,nmetals ! ERIC
            do i=1,np
-              chp(ind_part(i),ich)=emission(icpu,ilevel)%up(ind_com(i),current_property)
+              zp(ind_part(i),imet)=emission(icpu,ilevel)%up(ind_com(i),current_property)
            end do
            current_property = current_property+1
         end do
      end if
-#endif
-     if(write_stellar_densities) then
-        do i=1,np
-           st_n_tp(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)   !SD
-!           st_n_SN(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property+1) !SD
-!           st_e_SN(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property+2) !SD
-        end do
-        current_property=current_property+1
-     endif
-     if(use_initial_mass)then
-        do i=1,np
-           mp0(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
-        end do
-        current_property = current_property+1
-     end if
+     do i=1,np
+        mpb(ind_part(i))=emission(icpu,ilevel)%up(ind_com(i),current_property)
+     end do
+     current_property = current_property+1
   end if
 
 #ifdef DICE

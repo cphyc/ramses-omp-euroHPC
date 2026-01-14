@@ -1,58 +1,72 @@
 module pm_parameters
-  use amr_parameters, ONLY: dp, i8b
-  integer::nsinkmax=0               ! Maximum number of sinks
+  use amr_parameters, ONLY: dp
+  integer::nsinkmax=2000            ! Maximum number of sinks
   integer::npartmax=0               ! Maximum number of particles
   integer::npart=0                  ! Actual number of particles
   integer::nsink=0                  ! Actual number of sinks
   integer::iseed=0                  ! Seed for stochastic star formation
   integer::tseed=0                  ! Seed for MC tracers
-  integer(i8b)::nstar_tot=0         ! Total number of star particle
+  integer::nstar_tot=0              ! Total number of star particles
   real(dp)::mstar_tot=0             ! Total star mass
   real(dp)::mstar_lost=0            ! Missing star mass
 
   integer::ntracer_tot=0            ! Total number of tracers
-  integer::npartmax_rho=10000       ! Maximum number of particles in single grid to compute rho
-                                    ! Exceeding grid particles are randomly sampled by this number
-
   ! More sink related parameters, can all be set in namelist file
 
   integer::ir_cloud=4                        ! Radius of cloud region in unit of grid spacing (i.e. the ACCRETION RADIUS)
-  integer::ir_cloud_massive=3                ! Radius of massive cloud region in unit of grid spacing for PM sinks
-  real(dp)::sink_soft=2.d0                   ! Sink grav softening length in dx at levelmax for "direct force" sinks
-  real(dp)::mass_sink_direct_force=-1.d0     ! mass above which sinks are treated as "direct force" objects
+  integer::ir_cloud_massive=4                ! Radius of massive cloud region in unit of grid spacing for PM sinks
+  real(dp)::sink_soft=2                      ! Sink grav softening length in dx at levelmax for "direct force" sinks
+  real(dp)::mass_sink_direct_force=-1        ! mass above which sinks are treated as "direct force" objects
 
   logical::create_sinks=.false.              ! turn formation of new sinks on
+  integer::npartmax_rho=0        ! Maximum number of particles in single grid to compute rho
+                                 ! Exceeding grid particles are randomly sampled by this number
 
-  real(dp)::merging_timescale=-1.d0          ! time during which sinks are considered for merging (only when 'timescale' is used),                                             ! used also as contraction timescale in creation
-  real(dp)::cont_speed=0.
+  real(dp)::merging_timescale=-1             ! time during which sinks are considered for merging (only when 'timescale' is used),
+                                             ! used also as contraction timescale in creation
+  real(dp)::cont_speed=0                     ! Clump contraction rate
 
-  character(LEN=15)::accretion_scheme='none' ! Sink accretion scheme; options: 'none', 'flux', 'bondi', 'threshold'
-  logical::flux_accretion=.false.
-  logical::threshold_accretion=.false.
-  logical::bondi_accretion=.false.
+  character(LEN=15)::accretion_scheme='none' ! Sink accretion scheme; options: 'none', 'bondi'
+  logical::bondi_accretion=.false.           ! NOT A NAMELIST PARAMETER
+  logical::bondi_use_vrel=.true.             ! Use v_rel^2 in the denominator of Bondi formula
 
-  logical::nol_accretion=.false.             ! Leave angular momentum in the gas at accretion
-  real(dp)::mass_sink_seed=0.0               ! Initial sink mass. If < 0, use the AGN feedback based recipe
-  real(dp)::c_acc=-1.0                       ! "courant factor" for sink accretion time step control.
-                                             ! gives fration of available gas that can be accreted in one timestep.
+  real(dp)::mass_sink_seed=0                 ! Initial sink mass
+  real(dp)::mass_smbh_seed=0                 ! Initial SMBH mass
+  real(dp)::mass_merger_vel_check=1d100      ! Threshold for velocity check in merging in M_sun; default: don't check
 
-  logical::sink_drag=.false.                 ! Gas dragging sink
+  logical::eddington_limit=.false.           ! Switch for Eddington limit for the smbh case
   logical::clump_core=.false.                ! Trims the clump (for star formation)
   logical::verbose_AGN=.false.               ! Controls print verbosity for the SMBH case
-  real(dp)::acc_sink_boost=1.0               ! Boost coefficient for accretion
-  real(dp)::mass_merger_vel_check_AGN=-1.0   ! Threshold for velocity check in  merging; in Msun; default: don't check
+  real(dp)::acc_sink_boost=1                 ! Boost coefficient for accretion
 
-  character(LEN=15)::feedback_scheme='energy' ! AGN feedback scheme; options: 'energy' or 'momentum'
-  real(dp)::T2_min=1.d7                      ! Minimum temperature of the gas to trigger AGN blast; in K
-  real(dp)::T2_max=1.d9                      ! Maximum allowed temperature of the AGN blast; in K
-  real(dp)::T2_AGN=1.d12                     ! AGN blast temperature; in K
+  real(dp)::AGN_fbk_frac_ener=1              ! Fraction of AGN feedback released as thermal blast
+  real(dp)::AGN_fbk_frac_mom=0               ! Fraction of AGN feedback released as momentum injection
 
-  real(dp)::v_max=5.d4                       ! Maximum allowed velocity of the AGN blast; in km/s
-  real(dp)::v_AGN=1.d4                       ! AGN blast velocity; in km/s
-  real(dp)::cone_opening=180.                ! Outflow cone opening angle; in deg
+  real(dp)::T2_min=1d7                      ! Minimum temperature of the gas to trigger AGN blast; in K
+  real(dp)::T2_max=1d9                      ! Maximum allowed temperature of the AGN blast; in K
+  real(dp)::T2_AGN=1d12                     ! AGN blast temperature; in K
 
-  real(dp)::mass_halo_AGN=1.d10              ! Minimum mass of the halo for sink creation
-  real(dp)::mass_clump_AGN=1.d10             ! Minimum mass of the clump for sink creation
+  real(dp)::cone_opening=180d0              ! Outflow cone opening angle; in deg
+  real(dp)::epsilon_kin=1                    ! Efficiency of kinetic feedback
+  real(dp)::kin_mass_loading=100d0           ! Mass loading of the jet
+  real(dp)::AGN_fbk_mode_switch_threshold=0.01d0 ! M_Bondi/M_Edd ratio to switch between feedback modes
+                                                 ! if rate gt <value> is thermal, else is momentum;
+                                                 ! if <value> le 0 then not active
+
+  real(dp)::mass_halo_AGN=1d10              ! Minimum mass of the halo for sink creation
+  real(dp)::mass_clump_AGN=1d10             ! Minimum mass of the clump for sink creation
+  real(dp)::mass_star_AGN=0d0               ! Minimum mass of stars in the clump for sink creation
+
+  real(dp)::boost_threshold_density=0.1d0   ! Accretion boost threshold for Bondi
+
+  real(dp)::max_mass_nsc=1d15               ! Maximum mass of the Nuclear Star Cluster (msink)
+
+  logical::sink_descent=.false.             ! Switch for the sink descent
+  real(dp)::gamma_grad_descent=0.0d0        ! Step for the gradient descent
+  real(dp)::fudge_graddescent=1.0d0         ! Fudge factor for the for the BB gradient descent
+
+  character(LEN=15)::agn_acc_method='mass'
+  character(LEN=15)::agn_inj_method='volume'
 
   type part_t
      ! We store these two things contiguously in memory
@@ -68,7 +82,10 @@ module pm_parameters
 
   integer :: tracer_first_balance_levelmin = -1  ! Set to >0 to add more weight on level finer than this
   integer :: tracer_first_balance_part_per_cell = 0 ! Typical initial number of parts per cell
-  real(dp):: tracer_per_cell = -1.0              ! Initial number of tracer parts per cell (active only for 'inplace' and tracer_mass is not set)
-  integer :: tracer_level = -1                   ! Level of cell that puts tracer on (active only with tracer_per_cell)
-  logical :: no_init_gas_tracer=.false.
+
+  ! Tweek the initialization of tracers
+  ! This allows to initialize tracers using a different field as RAMSES
+  integer :: tracer_ivar_refine = -1       ! Override ivar_refine. If set to -1, fall back to ivar_refine
+  real(dp) :: tracer_var_cut_refine = 0d0  ! Override var_cut_refine. If set to 0, fall back to var_cut_refine
+
 end module pm_parameters

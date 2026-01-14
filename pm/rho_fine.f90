@@ -213,22 +213,22 @@ subroutine rho_fine(ilevel,icount)
      end do
   end do
 
-  if(trans_smooth>0)then
-     if(ilevel<=(nlevelmax_part+nlevel_collapse-1))then
-        m_refine=8d0
-     else
-        aoff = (aexp-aexp_trans(ilevel+1))/trans_smooth
-        if(aoff<=-1.) then ! refinement not started yet
-           m_refine(ilevel)=1d20
-           ! prevent_refine=.true.
-        elseif(aoff<1.) then ! ongoing transition
-           !m_refine=8d0
-           m_refine(ilevel)=100d0-(SIN(aoff*twopi/4.)/2.+0.5)*92.
-        else ! refinement finished
-           m_refine(ilevel)=8d0
-        end if
-     end if
-  end if
+!   if(trans_smooth>0)then
+!      if(ilevel<=(nlevelmax_part+nlevel_collapse-1))then
+!         m_refine=8d0
+!      else
+!         aoff = (aexp-aexp_trans(ilevel+1))/trans_smooth
+!         if(aoff<=-1.) then ! refinement not started yet
+!            m_refine(ilevel)=1d20
+!            ! prevent_refine=.true.
+!         elseif(aoff<1.) then ! ongoing transition
+!            !m_refine=8d0
+!            m_refine(ilevel)=100d0-(SIN(aoff*twopi/4.)/2.+0.5)*92.
+!         else ! refinement finished
+!            m_refine(ilevel)=8d0
+!         end if
+!      end if
+!   end if
 
   !-----------------------------------------
   ! Compute quasi Lagrangian refinement map
@@ -884,13 +884,13 @@ subroutine cic_amr(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel,multipole_tmp
         else
            vol2(j,ind)=mmm(j)*vol(j,ind)/vol_loc * factor
         end if
-        if (point_mass_sink .and. is_cloud(fam(j))) then
-           if (is_central_cloud(fam(j))) then
-              vol2(j,ind)=vol(j,ind)/vol_loc*msink(-idp(ind_part(j)))
-           else
-              vol2(j,ind)=0
-           end if
-        end if
+      !   if (point_mass_sink .and. is_cloud(fam(j))) then
+      !      if (is_central_cloud(fam(j))) then
+      !         vol2(j,ind)=vol(j,ind)/vol_loc*msink(-idp(ind_part(j)))
+      !      else
+      !         vol2(j,ind)=0
+      !      end if
+      !   end if
      end do
 
      do j=1,np

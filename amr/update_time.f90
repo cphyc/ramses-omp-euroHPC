@@ -11,8 +11,7 @@ real(kind=8) function wallclock()
   real(kind=8)       :: tcur
 #endif
   logical,      save :: first_call=.true.
-  real(kind=8), save :: norm, offset=0.
-
+  real(kind=8), save :: norm, offset=0
   !---------------------------------------------------------------------
   if (first_call) then
 #ifdef WITHOUTMPI
@@ -53,28 +52,19 @@ subroutine findit (label)
   ntimer = ntimer+1
   itimer = ntimer
   labels(itimer) = label
-  time(itimer) = 0.
+  time(itimer) = 0
 end subroutine
 end module
 !=======================================================================
 subroutine timer (label, cmd)
   use timer_m
-  use amr_parameters,only:exact_timer
-  use mpi_mod
   implicit none
   character(len=*)::label,cmd
   real(kind=8)::wallclock,current
-#ifndef WITHOUTMPI
-  integer::mpi_err
-#endif
 !-----------------------------------------------------------------------
   current = wallclock()                                                 ! current time
   if (itimer > 0) then                                                  ! if timer is active ..
      time(itimer) = time(itimer) + current - start(itimer)              ! add to it
-  end if
-  if(exact_timer) then
-      call MPI_BARRIER(MPI_COMM_WORLD,mpi_err)
-      current = wallclock()                                             ! current time
   end if
   call findit (label)                                                   ! locate timer slot
   if (cmd == 'start') then                                              ! start command
@@ -118,7 +108,7 @@ subroutine output_timer(write_file, filename)
   end do
   if (ncpu==1) then
      do i = 1,ntimer
-        if (id_is_one .and. time(i)/total > 0.0) write (ilun,'(f12.3,4x,f6.1,4x,a24)') &
+        if (id_is_one .and. time(i)/total > 0.001) write (ilun,'(f12.3,4x,f6.1,4x,a24)') &
           time(i), 100.*time(i)/total,labels(i)
      end do
      if (id_is_one) write (ilun,'(f12.3,4x,f6.1,4x,a)') total, 100., 'TOTAL'
@@ -171,7 +161,7 @@ subroutine output_timer(write_file, filename)
      do i = 1,ntimer
         call MPI_GATHER(real(time(i),kind=8),1,MPI_REAL8,vtime,1,MPI_REAL8,0,MPI_COMM_WORLD,mpi_err)
         if (id_is_one) then
-           if (maxval(vtime)/gtotal > 0.0) then
+           if (maxval(vtime)/gtotal > 0.001) then
               avtime  = sum(vtime) / ncpu ! average time used
               imn     = minloc(vtime,1)
               imx     = maxloc(vtime,1)
@@ -184,16 +174,17 @@ subroutine output_timer(write_file, filename)
      if (id_is_one) write (ilun,'(f12.3,4x,f6.1,4x,a)') total, 100., 'TOTAL'
   endif
 #endif
-  if (id_is_one .and. write_file) close(ilun)
+  if (id_is_one) close(ilun)
 end subroutine
 !=======================================================================
 subroutine reset_timer
    use timer_m
    use mpi_mod
    implicit none
+
 !-----------------------------------------------------------------------
    do itimer = 1,ntimer
-      time(itimer)=0.0
+      time(itimer)=0
    end do
 end subroutine
 !=======================================================================
@@ -206,11 +197,14 @@ subroutine update_time(ilevel)
   implicit none
 #ifndef WITHOUTMPI
   real(kind=8)::ttend
-  real(kind=8)::ttstart=0
+  real(kind=8),save::ttstart=0
 #endif
   integer::ilevel
 
   real(dp)::dt,econs,mcons
+#ifdef SOLVERmhd
+  real(dp)::sqrt_aexp_prev
+#endif
   integer::i,itest
 
   ! Local constants
@@ -303,7 +297,7 @@ subroutine update_time(ilevel)
            write(*,*)'Total elapsed time:',ttend-ttstart
 #endif
         endif
-        call clean_stop
+        call clean_end
      end if
 
   end if
@@ -331,6 +325,10 @@ subroutine update_time(ilevel)
   t=t+dt
   nstep=nstep+1
   if(cosmo)then
+#ifdef SOLVERmhd
+     ! Keep for magnetic field expansion
+     sqrt_aexp_prev = SQRT(aexp)
+#endif
      ! Find neighboring times
      i=1
      do while(tau_frw(i)>t.and.i<n_frw)
@@ -343,9 +341,15 @@ subroutine update_time(ilevel)
           & hexp_frw(i-1)*(t-tau_frw(i  ))/(tau_frw(i-1)-tau_frw(i  ))
      texp =    t_frw(i  )*(t-tau_frw(i-1))/(tau_frw(i  )-tau_frw(i-1))+ &
           &    t_frw(i-1)*(t-tau_frw(i  ))/(tau_frw(i-1)-tau_frw(i  ))
+
+#ifdef SOLVERmhd
+     do i=1,ilevel
+       call update_cosmomag(i,SQRT(aexp)/sqrt_aexp_prev)
+     end do
+#endif
   else
-     aexp = 1.0
-     hexp = 0.0
+     aexp = 1
+     hexp = 0
      texp = t
   end if
 
@@ -358,107 +362,6 @@ subroutine update_time(ilevel)
 999 format(' Level ',I2,' has ',I10,' grids (',3(I8,','),')')
 
 end subroutine update_time
-
-subroutine clean_stop
-  use amr_commons
-  use poisson_commons
-  use pm_commons
-  use mpi_mod
-  implicit none
-#ifndef WITHOUTMPI
-  integer::info
-#endif
-  integer :: ilevel
-  character(LEN=80)::str
-
-  call output_timer(.false., str)
-
-#ifndef WITHOUTMPI
-  call MPI_FINALIZE(info)
-#endif
-
-  ! allocations in read_params.f90
-  if(allocated(remap_pscalar)) deallocate(remap_pscalar)
-
-
-  ! allocations in init_amr.f90
-  if(allocated(bound_key)) deallocate(bound_key)
-  if(allocated(bound_key2)) deallocate(bound_key2)
-  if(allocated(headl)) deallocate(headl)
-  if(allocated(taill)) deallocate(taill)
-  if(allocated(numbl)) deallocate(numbl)
-  if(allocated(numbtot)) deallocate(numbtot)
-  if(allocated(headb)) deallocate(headb)
-  if(allocated(tailb)) deallocate(tailb)
-  if(allocated(numbb)) deallocate(numbb)
-  if(allocated(boundary)) deallocate(boundary)
-
-  ! communicators
-  if(allocated(active))then
-     do ilevel=1,nlevelmax
-        ! virtual_boundaries.f90
-        ! TODO: cleaner solution (fortran 2003): s/pointer/allocatable/
-        if(active(ilevel)%ngrid>0) deallocate(active(ilevel)%igrid)
-     enddo
-     deallocate(active)
-  endif
-  if(allocated(emission)) deallocate(emission)
-  if(allocated(reception)) deallocate(reception)
-  !
-  if(allocated(lookup_mg)) deallocate(lookup_mg)
-  !
-  if(allocated(father)) deallocate(father)
-  if(allocated(nbor)) deallocate(nbor)
-  if(allocated(next)) deallocate(next)
-  if(allocated(prev)) deallocate(prev)
-  if(pic)then
-     if(allocated(headp)) deallocate(headp)
-     if(allocated(tailp)) deallocate(tailp)
-     if(allocated(numbp)) deallocate(numbp)
-  endif
-  if(allocated(xg)) deallocate(xg)
-  ! amr cell-based arrays
-  if(allocated(flag1)) deallocate(flag1)
-  if(allocated(flag2)) deallocate(flag2)
-  if(allocated(son)) deallocate(son)
-  ! mpi cell-based arrays
-  if(allocated(cpu_map)) deallocate(cpu_map)
-  if(allocated(cpu_map2)) deallocate(cpu_map2)
-  if(allocated(hilbert_key)) deallocate(hilbert_key)
-
-
-  ! allocations in init_poisson.f90
-  if(allocated(safe_mode)) deallocate(safe_mode)
-  if(allocated(active_mg)) deallocate(active_mg)
-  if(allocated(emission_mg)) deallocate(emission_mg)
-  ! cell-centred variables
-  if(allocated(rho)) deallocate(rho)
-  if(allocated(phi)) deallocate(phi)
-  if(allocated(phi_old)) deallocate(phi_old)
-  if(allocated(f)) deallocate(f)
-  !if(allocated(fcg)) deallocate(fcg)
-  !if(allocated(nborl)) deallocate(nborl)
-  !if(allocated(addrl)) deallocate(addrl)
-
-
-  ! allocations in init_time.f90
-  if(allocated(aexp_frw)) deallocate(aexp_frw)
-  if(allocated(hexp_frw)) deallocate(hexp_frw)
-  if(allocated(tau_frw)) deallocate(tau_frw)
-  if(allocated(t_frw)) deallocate(t_frw)
-
-
-  ! init_part.f90 - in general, BIG deallocations
-  if(allocated(idp)) deallocate(idp)
-  if(allocated(nextp)) deallocate(nextp)
-  if(allocated(prevp)) deallocate(prevp)
-  if(allocated(levelp)) deallocate(levelp)
-  if(allocated(mp)) deallocate(mp)
-  if(allocated(vp)) deallocate(vp)
-  if(allocated(xp)) deallocate(xp)
-
-  stop
-end subroutine clean_stop
 
 subroutine writemem(usedmem)
   real(kind=4)::usedmem
@@ -559,7 +462,7 @@ SUBROUTINE getProperTime(tau,tproper)
   implicit none
   real(dp)::tau, tproper
   integer::i
-  if(.not. cosmo .or. tau .eq. 0.d0) then ! this might happen quite often
+  if(.not. cosmo .or. tau .eq. 0d0) then ! this might happen quite often
      tproper = tau
      return
   endif
@@ -577,16 +480,18 @@ SUBROUTINE getAgeGyr(t_birth_proper, age)
 !------------------------------------------------------------------------
   use amr_commons
   use pm_commons
+  use constants,only: Gyr2sec
   implicit none
-  real(dp) :: t_birth_proper, age
-  real(dp) :: yr
-  real(dp) :: scale_t_Gyr
-  logical  :: scale_init=.false.
-  real(dp) :: scale_nH, scale_T2, scale_l, scale_d, scale_t, scale_v
-
-  yr = 3.15569d+07
-  call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
-  scale_t_Gyr = (scale_t/aexp**2)/yr/1.e9
+  real(dp):: t_birth_proper, age
+  real(dp),save:: scale_t_Gyr
+  logical,save::scale_init=.false.
+  real(dp):: scale_nH, scale_T2, scale_l, scale_d, scale_t, scale_v
+  if( .not. scale_init) then
+     ! The timescale has not been initialized
+     call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
+     scale_t_Gyr = (scale_t/aexp**2)/Gyr2sec
+     scale_init=.true.
+  endif
   age = (texp - t_birth_proper) * scale_t_Gyr
 END SUBROUTINE getAgeGyr
 !------------------------------------------------------------------------
@@ -598,13 +503,15 @@ SUBROUTINE getAgeSec(t_birth_proper, age)
   use pm_commons
   implicit none
   real(dp):: t_birth_proper, age
-  real(dp) :: scale_t_sec
-  logical :: scale_init=.false.
+  real(dp),save:: scale_t_sec
+  logical::scale_init=.false.
   real(dp):: scale_nH, scale_T2, scale_l, scale_d, scale_t, scale_v
-
-  call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
-  scale_t_sec = (scale_t/aexp**2)
-  scale_init=.true.
+  if( .not. scale_init) then
+     ! The timescale has not been initialized
+     call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
+     scale_t_sec = (scale_t/aexp**2)
+     scale_init=.true.
+  endif
   age = (texp - t_birth_proper) * scale_t_sec
 END SUBROUTINE getAgeSec
 !------------------------------------------------------------------------

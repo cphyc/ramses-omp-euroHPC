@@ -10,7 +10,7 @@ subroutine backup_hydro(filename, filename_desc)
 
   character(len=80), intent(in) :: filename, filename_desc
 
-  integer :: i, ii, ivar, ncache, ind, ilevel, igrid, iskip, istart, ibound
+  integer :: i, ivar, ncache, ind, ilevel, igrid, iskip, istart, ibound
   integer :: unit_out, unit_info
   integer, allocatable, dimension(:) :: ind_grid
   real(dp), allocatable, dimension(:) :: xdp
@@ -51,7 +51,11 @@ subroutine backup_hydro(filename, filename_desc)
   end if
 
   write(unit_out) ncpu
-  write(unit_out) nvar
+  if(strict_equilibrium>0)then
+     write(unit_out) nvar+2
+  else
+     write(unit_out) nvar
+  endif
   write(unit_out) ndim
   write(unit_out) nlevelmax
   write(unit_out) nboundary
@@ -129,20 +133,26 @@ subroutine backup_hydro(filename, filename_desc)
                  do i = 1, ncache
                     xdp(i) = uold(ind_grid(i)+iskip, ivar)/max(uold(ind_grid(i)+iskip, 1), smallr)
                  end do
-                 if (ivar == imetal) then
-                    field_name = 'metallicity'
-                 else if (ivar == ivar_refine) then
-                    field_name = 'refinement_scalar'
-                 else if ((ivar >= idust).and.(ivar< idust+ndust)) then
-                    write(field_name, '("dust_bin", i0.2)') ivar-idust+1
-                 else if (ivar >= ichem .and. ivar < ichem+nchem) then
-                    field_name = 'chem_'//TRIM(chem_list(ivar - ichem + 1))
+                 if (metal.ne.0 .and. (ivar >= imetal .and. ivar < imetal+nmetals)) then
+                    field_name = 'metal_' // trim(met_keys(ivar-imetal+1))
                  else
                     write(field_name, '("scalar_", i0.2)') ivar - ndim - 3 - nener
                  end if
                  call generic_dump(field_name, info_var_count, xdp, unit_out, dump_info_flag, unit_info)
               end do
 #endif
+              if(strict_equilibrium>0)then
+                 do i = 1, ncache
+                    xdp(i) = rho_eq(ind_grid(i)+iskip)
+                 end do
+                 field_name = 'equilibrium_density'
+                 call generic_dump(field_name, info_var_count, xdp, unit_out, dump_info_flag, unit_info)
+                 do i = 1, ncache
+                    xdp(i) = p_eq(ind_grid(i)+iskip)
+                 end do
+                 field_name = 'equilibrium_pressure'
+                 call generic_dump(field_name, info_var_count, xdp, unit_out, dump_info_flag, unit_info)
+              endif
               ! We did one output, deactivate dumping of variables
               dump_info_flag = .false.
            end do

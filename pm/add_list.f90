@@ -146,7 +146,8 @@ subroutine add_free(ind_part,np)
   ! Add particles to the free memory linked list
   ! and reset all particle variables
   !
-  integer::j,idim,ich
+  integer::j,idim
+  integer:: imet ! ERIC
 
   do idim=1,ndim
      do j=1,np
@@ -156,7 +157,6 @@ subroutine add_free(ind_part,np)
   end do
   do j=1,np
      mp(ind_part(j))=0.0
-     if(use_initial_mass)mp0(ind_part(j))=0.0
      idp(ind_part(j))=0
      levelp(ind_part(j))=0
      typep(ind_part(j))%family=FAM_UNDEF
@@ -165,26 +165,15 @@ subroutine add_free(ind_part,np)
   if(star.or.sink)then
      do j=1,np
         tp(ind_part(j))=0.0
-        if(write_stellar_densities) then
-           st_n_tp(ind_part(j))=0.0
-!           st_n_SN(ind_part(j))=0.0
-!           st_e_SN(ind_part(j))=0.0
-        endif
+        mpb(ind_part(j))=0.0
      end do
-     if(metal)then
-        do j=1,np
-           zp(ind_part(j))=0.0
-        end do
-     end if
-#ifdef NCHEM
-     if(nchem>0)then
-        do ich=1,nchem
+     if(metal.ne.0)then
+        do imet=1,nmetals ! ERIC
            do j=1,np
-              chp(ind_part(j),ich)=0.0
+              zp(ind_part(j),imet)=0.0
            end do
         end do
      end if
-#endif
   end if
 #ifdef DICE
   ! DICE patch
@@ -234,7 +223,8 @@ subroutine add_free_cond(ind_part,ok,np)
   ! Add particles to the free memory linked list
   ! and reset all particle variables
   !
-  integer::j,idim,ich
+  integer::j,idim
+  integer:: imet ! ERIC
 
   do idim=1,ndim
      do j=1,np
@@ -247,7 +237,6 @@ subroutine add_free_cond(ind_part,ok,np)
   do j=1,np
      if(ok(j))then
         mp(ind_part(j))=0.0
-        if(use_initial_mass) mp0(ind_part(j))=0.0
         idp(ind_part(j))=0
         levelp(ind_part(j))=0
         typep(ind_part(j))%family = FAM_UNDEF
@@ -258,29 +247,18 @@ subroutine add_free_cond(ind_part,ok,np)
      do j=1,np
         if(ok(j))then
            tp(ind_part(j))=0.0
-           if(write_stellar_densities) then
-              st_n_tp(ind_part(j))=0.0
-!              st_n_SN(ind_part(j))=0.0
-!              st_e_SN(ind_part(j))=0.0
-           endif
+           mpb(ind_part(j))=0.0
         endif
      end do
-     if(metal)then
-        do j=1,np
-           if(ok(j))then
-              zp(ind_part(j))=0.0
-           endif
-        end do
-     end if
-#ifdef NCHEM
-     if(nchem>0)then
-        do ich=1,nchem
+     if(metal.ne.0)then
+        do imet=1,nmetals ! ERIC
            do j=1,np
-              chp(ind_part(j),ich)=0.0
+              if(ok(j))then
+                 zp(ind_part(j),imet)=0.0
+              endif
            end do
         end do
      end if
-#endif
   end if
 
 #ifdef DICE

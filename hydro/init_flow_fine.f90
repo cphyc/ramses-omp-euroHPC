@@ -16,7 +16,7 @@ subroutine init_flow
 #endif
 
   if(verbose)write(*,*)'Entering init_flow'
-  do ilevel=(nlevelmax-nlevelsheld),1,-1
+  do ilevel=nlevelmax,1,-1
      if(ilevel>=levelmin)call init_flow_fine(ilevel)
      call upload_fine(ilevel)
      do ivar=1,nvar
@@ -288,16 +288,7 @@ subroutine init_flow_fine(ilevel)
            if(ncache>0)then
               init_array=0d0
               ! Default value for metals
-              if(cosmo .and. metal) then
-                 if(ivar==imetal)init_array=z_ave*0.02 ! from solar units
-              end if
-              if(nchem>0)then
-                 if(ivar>=ichem .and. ivar<ichem+nchem) then
-                    call init_chem(ivar-ichem+1,z_chem)
-                    !z_chem=tiny(0d0)
-                    init_array=z_chem ! from solar units
-                 end if
-              end if
+             ! if(cosmo.and.ivar==imetal.and.metal.ne.0)init_array=z_ave*0.02d0 ! from solar units  !Oscar:removed for now. imetal is hydrogen variable in new patch
               ! Default value for ionization fraction
               if(cosmo)xval=sqrt(omega_m)/(h0/100.*omega_b) ! From the book of Peebles p. 173
               if(cosmo.and.ivar==ixion.and.aton)init_array=1.2d-5*xval
@@ -445,22 +436,22 @@ subroutine init_flow_fine(ilevel)
      end do
      ! End loop over grids
 
-     if(level_zoom /= 0 .and. ilevel >= level_zoom)then
-        do ind=1,twotondim
-           iskip=ncoarse+(ind-1)*ngridmax
-           do i=1,ncache
-              igrid=active(ilevel)%igrid(i)
-              icell=igrid+iskip
-              xx1=xg(igrid,1)+xc(ind,1)-skip_loc(1)
-              xx2=xg(igrid,2)+xc(ind,2)-skip_loc(2)
-              xx3=xg(igrid,3)+xc(ind,3)-skip_loc(3)
-              rr=sqrt( (xx1-xzoom)**2 + (xx2-yzoom)**2 + (xx3-zzoom)**2 )
-              if(rr.le.rzoom)then
-                 uold(icell,ivar_refine)=uold(icell,1)
-              endif
-           end do
-        end do
-     endif
+   !   if(level_zoom /= 0 .and. ilevel >= level_zoom)then
+   !      do ind=1,twotondim
+   !         iskip=ncoarse+(ind-1)*ngridmax
+   !         do i=1,ncache
+   !            igrid=active(ilevel)%igrid(i)
+   !            icell=igrid+iskip
+   !            xx1=xg(igrid,1)+xc(ind,1)-skip_loc(1)
+   !            xx2=xg(igrid,2)+xc(ind,2)-skip_loc(2)
+   !            xx3=xg(igrid,3)+xc(ind,3)-skip_loc(3)
+   !            rr=sqrt( (xx1-xzoom)**2 + (xx2-yzoom)**2 + (xx3-zzoom)**2 )
+   !            if(rr.le.rzoom)then
+   !               uold(icell,ivar_refine)=uold(icell,1)
+   !            endif
+   !         end do
+   !      end do
+   !   endif
 
   !-------------------------------------------------------
   ! Compute initial conditions from subroutine condinit
@@ -703,48 +694,48 @@ subroutine region_condinit(x,q,dx,nn)
   return
 end subroutine region_condinit
 
-subroutine init_chem(ich,z_chem)
-   ! This routine initializes chemical abundances to solar scaled value
-   use amr_commons
-   use hydro_commons
-   implicit none
-   integer::ilevel
-   integer::ich
-   real(dp)::z_ini,Yp
-   real(dp),intent(out)::z_chem
-   real(dp),dimension(1:7)::f_solar,m_solar
-   character(len=2)::element_name
+! subroutine init_chem(ich,z_chem)
+!    ! This routine initializes chemical abundances to solar scaled value
+!    use amr_commons
+!    use hydro_commons
+!    implicit none
+!    integer::ilevel
+!    integer::ich
+!    real(dp)::z_ini,Yp
+!    real(dp),intent(out)::z_chem
+!    real(dp),dimension(1:7)::f_solar,m_solar
+!    character(len=2)::element_name
 
-   Yp = 0.2477        ! Manuel & Luridiana 2007
-   z_ini = z_ave*0.02 ! Inital metal abundance
-   f_solar = (/0.16245322d0,0.04757141d0,0.39389979d0,0.0486535d0,0.04570737d0,&
-       &0.0212605d0,0.08884559d0/) ! Relative fraction to metalicity, from Asplund+ 2009
+!    Yp = 0.2477        ! Manuel & Luridiana 2007
+!    z_ini = z_ave*0.02 ! Inital metal abundance
+!    f_solar = (/0.16245322d0,0.04757141d0,0.39389979d0,0.0486535d0,0.04570737d0,&
+!        &0.0212605d0,0.08884559d0/) ! Relative fraction to metalicity, from Asplund+ 2009
 
-   element_name=chem_list(ich)
-   select case (element_name)
-      case ('H ')
-         z_chem=1d0-Yp-z_ini
-      case ('C ')
-         z_chem=1d-20
-      case ('N ')
-         z_chem=1d-20
-      case ('O ')
-         z_chem=1d-20
-      case ('Mg')
-         z_chem=1d-20
-      case ('Si')
-         z_chem=1d-20
-      case ('S ')
-         z_chem=1d-20
-      case ('Fe')
-         z_chem=1d-20
-      case ('D ')
-         z_chem=(1d0-Yp-z_ini)*2.55d-5
-      case default
-         z_chem=0d0
-   end select
+!    element_name=chem_list(ich)
+!    select case (element_name)
+!       case ('H ')
+!          z_chem=1d0-Yp-z_ini
+!       case ('C ')
+!          z_chem=1d-20
+!       case ('N ')
+!          z_chem=1d-20
+!       case ('O ')
+!          z_chem=1d-20
+!       case ('Mg')
+!          z_chem=1d-20
+!       case ('Si')
+!          z_chem=1d-20
+!       case ('S ')
+!          z_chem=1d-20
+!       case ('Fe')
+!          z_chem=1d-20
+!       case ('D ')
+!          z_chem=(1d0-Yp-z_ini)*2.55d-5
+!       case default
+!          z_chem=0d0
+!    end select
 
-end subroutine init_chem
+! end subroutine init_chem
 
 #ifdef DICE
 subroutine reset_uold(ilevel)
@@ -1245,7 +1236,7 @@ subroutine init_gas_cic(ind_cell,ind_part,ind_grid_part,x0,ng,np,ilevel)
            end do
            uold(indp(j,ind),ndim+2)=uold(indp(j,ind),ndim+2)+mp(ind_part(j))*vol(j,ind)/vol_loc(j)*ethermal(j)
            if(metal) then
-             uold(indp(j,ind),imetal)=uold(indp(j,ind),imetal)+mp(ind_part(j))*vol(j,ind)/vol_loc(j)*zp(ind_part(j))
+             uold(indp(j,ind),imetal:imetal+nmetals)=uold(indp(j,ind),imetal)+mp(ind_part(j))*vol(j,ind)/vol_loc(j)*zp(ind_part(j),:)
            endif
         endif
         ! Update passive scalar mask
@@ -1396,7 +1387,7 @@ subroutine init_gas_ngp(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
         uold(indp(j),ndim+2)=uold(indp(j),ndim+2)+mp(ind_part(j))/vol_loc(j)*ethermal(j)
         ! Update passive hydro variables in NGP cell
         if(metal) then
-           uold(indp(j),imetal)=uold(indp(j),imetal)+mp(ind_part(j))/vol_loc(j)*zp(ind_part(j))
+           uold(indp(j),imetal:imetal+nmetals)=uold(indp(j),imetal:imetal+nmetals)+mp(ind_part(j))/vol_loc(j)*zp(ind_part(j),:)
         endif
      endif
      ! Update passive scalar mask

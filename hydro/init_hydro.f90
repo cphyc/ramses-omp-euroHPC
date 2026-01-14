@@ -9,16 +9,15 @@ subroutine init_hydro
 #ifndef WITHOUTMPI
   integer::info,info2,dummy_io
 #endif
-  integer::ncell,ncache,iskip,igrid,i,ilevel,ind,ivar,ivar2
+  integer::ncell,ncache,iskip,igrid,i,ilevel,ind,ivar
   integer::nvar2,ilevel2,numbl2,ilun,ibound,istart
   integer::ncpu2,ndim2,nlevelmax2,nboundary2
   integer ,dimension(:),allocatable::ind_grid
   real(dp),dimension(:),allocatable::xx
-  real(dp)::gamma2,init_value,z_chem
+  real(dp)::gamma2
   character(LEN=80)::fileloc
   character(LEN=5)::nchar,ncharcpu
   integer,parameter::tag=1108
-  logical::ok
 #if NENER>0
   integer::irad
 #endif
@@ -36,7 +35,7 @@ subroutine init_hydro
      allocate(fluxes(1:ncell,1:twondim))
      fluxes(1:ncell,1:twondim)=0.0d0
   end if
-  if(momentum_feedback)then
+  if(momentum_feedback>0)then
      allocate(pstarold(1:ncell))
      allocate(pstarnew(1:ncell))
      pstarold=0.0d0; pstarnew=0.0d0
@@ -46,12 +45,17 @@ subroutine init_hydro
      allocate(enew(1:ncell))
      divu=0.0d0; enew=0.0d0
   end if
+  if(strict_equilibrium>0)then
+     allocate(rho_eq(1:ncell))
+     allocate(p_eq(1:ncell))
+     rho_eq=0.0d0; p_eq=0.0d0
+  endif
 
   !--------------------------------
   ! For a restart, read hydro file
   !--------------------------------
   if(nrestart>0)then
-     ilun=ncpu+myid+10
+     ilun=ncpu+myid+103
      call title(nrestart,nchar)
 
      if(IOGROUPSIZEREP>0)then
@@ -60,8 +64,6 @@ subroutine init_hydro
      else
         fileloc='output_'//TRIM(nchar)//'/hydro_'//TRIM(nchar)//'.out'
      endif
-
-
 
      call title(myid,nchar)
      fileloc=TRIM(fileloc)//TRIM(nchar)
@@ -75,11 +77,11 @@ subroutine init_hydro
         end if
      endif
 #endif
-
-
+     
      open(unit=ilun,file=fileloc,form='unformatted')
      read(ilun)ncpu2
      read(ilun)nvar2
+     if(strict_equilibrium>0)nvar2=nvar2-2
      read(ilun)ndim2
      read(ilun)nlevelmax2
      read(ilun)nboundary2
@@ -87,14 +89,13 @@ subroutine init_hydro
      if(myid==1)then
         write(*,*)'Restart - Non-thermal pressure / Passive scalar mapping'
         write(*,'(A50)')"__________________________________________________"
-        do i=1,nvar-(ndim+2)
+        do i=1,nvar2-(ndim+2)
             if(remap_pscalar(i).gt.0) then
                write(*,'(A,I3,A,I3)') ' Restart var',i+ndim+2,' loaded in var',remap_pscalar(i)
             else if(remap_pscalar(i).gt.-1)then
                write(*,'(A,I3,A)') ' Restart var',i+ndim+2,' read but not loaded'
             else
                write(*,'(A,I3,A)') ' Restart var',i+ndim+2,' not read'
-               write(*,'(A,I3,A)') ' Initialize var',abs(remap_pscalar(i)),' with default value'
             endif
         enddo
         write(*,'(A50)')"__________________________________________________"
@@ -190,42 +191,38 @@ subroutine init_hydro
                     end do
 #endif
                  else
-                    xx(i)=0.
+                    xx(i)=0
                  end if
                     uold(ind_grid(i)+iskip,ndim+2)=xx(i)
                  end do
 #if NVAR>NDIM+2+NENER
                  ! Read passive scalars
                  do ivar=ndim+3+nener,max(nvar2,nvar)
-                    ivar2=remap_pscalar(ivar-ndim-2)
-                    if(ivar2<0) then
-                       init_value=0d0
-                       ! Default value for metals
-                       if(cosmo .and. metal) then
-                          if(-ivar2==imetal)init_value=z_ave*0.02 ! from solar units
-                       end if
-                       if(nchem>0)then
-                          if(-ivar2>=ichem .and. -ivar2<ichem+nchem) then
-                             call init_chem(-ivar2-ichem+1,z_chem)
-                             !z_chem=tiny(0d0)
-                             init_value=z_chem ! from solar units
-                          end if
-                       end if
-                    end if
-
-                    if(ivar2>-1) read(ilun)xx
+                    if(remap_pscalar(ivar-ndim-2).gt.-1) read(ilun)xx
                     if(ivar.gt.nvar)then
                        continue
                     endif
                     do i=1,ncache
-                       if(ivar2>0)then
-                          uold(ind_grid(i)+iskip,ivar2)=xx(i)*max(uold(ind_grid(i)+iskip,1),smallr)
-                       else if(ivar2<0) then
-                          uold(ind_grid(i)+iskip,abs(ivar2))=init_value*max(uold(ind_grid(i)+iskip,1),smallr)
+                       if(remap_pscalar(ivar-ndim-2).gt.0)then
+                          uold(ind_grid(i)+iskip,remap_pscalar(ivar-ndim-2))=xx(i)*max(uold(ind_grid(i)+iskip,1),smallr)
+                       else if(remap_pscalar(ivar-ndim-2).lt.0) then
+                          uold(ind_grid(i)+iskip,abs(remap_pscalar(ivar-ndim-2)))=0d0
                        endif
                     end do
                  end do
 #endif
+                 ! Read equilibrium density and pressure profiles
+                 if(strict_equilibrium>0)then
+                    read(ilun)xx
+                    do i=1,ncache
+                       rho_eq(ind_grid(i)+iskip)=xx(i)
+                    end do
+                    read(ilun)xx
+                    do i=1,ncache
+                       p_eq(ind_grid(i)+iskip)=xx(i)
+                    end do
+                 endif
+                 
               end do
               deallocate(ind_grid,xx)
            end if

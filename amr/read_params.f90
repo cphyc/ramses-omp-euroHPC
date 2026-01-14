@@ -14,7 +14,7 @@ subroutine read_params
   !--------------------------------------------------
   ! Local variables
   !--------------------------------------------------
-  integer::i,narg,levelmax,levelhold=-1
+  integer::i,narg,levelmax
   character(LEN=80)::infile, info_file
   character(LEN=80)::cmdarg
   character(LEN=5)::nchar
@@ -22,37 +22,39 @@ subroutine read_params
   integer(kind=8)::nparttot=0
   real(kind=8)::delta_tout=0,tend=0
   real(kind=8)::delta_aout=0,aend=0
-  logical::nml_ok, info_ok, restart_file_ok
+  logical::nml_ok, info_ok, restart_file_ok, log_exist
   integer,parameter::tag=1134
   integer::mythr
 #ifndef WITHOUTMPI
   integer::dummy_io,ierr,info2
 #endif
+  character(LEN=128)::logdir,filename
 
   !--------------------------------------------------
   ! Namelist definitions
   !--------------------------------------------------
-  namelist/run_params/clumpfind,cosmo,pic,sink,sinkprops,lightcone,poisson,hydro,rt,verbose,debug &
-       & ,nrestart,nrestart_seek,ncontrol,nstepmax,nsubcycle,load_weights,part_univ_cost,exact_timer,nremap,ordering &
+  namelist/run_params/clumpfind,cosmo,pic,sink,tracer,lightcone,poisson,hydro,rt,verbose,debug &
+       & ,nrestart,ncontrol,nstepmax,nsubcycle,load_weights,part_univ_cost,nremap,ordering &
        & ,bisec_tol,static,overload,cost_weighting,aton,nrestart_quad,restart_remap &
        & ,static_dm,static_gas,static_stars,convert_birth_times,use_proper_time,remap_pscalar &
-       & ,dtstop,magic_number,nchunk,dtmax,sinkprops_dir,remove_invalid_particle
-  namelist/output_params/output,noutput,foutput,aout,tout &
-       & ,tend,delta_tout,aend,delta_aout,gadget_output,walltime_hrs,minutes_dump &
-       & ,early_stop_hrs,dump_stop,foutput_timer,wallstep,output_now
+       & ,dtstop,magic_number,nchunk,dtmax
+  namelist/output_params/noutput,foutput,aout,tout &
+       & ,tend,delta_tout,aend,delta_aout,gadget_output,walltime_hrs,minutes_dump, &
+       & output_now
   namelist/amr_params/levelmin,levelmax,ngridmax,ngridtot &
        & ,npartmax,nparttot,nexpand,boxlen,nlevel_collapse &
-       & ,nsinkmax,levelhold,holdback
+       & ,nsinkmax
   namelist/poisson_params/epsilon,gravity_type,gravity_params &
-       & ,cg_levelmin,cic_levelmax,npartmax_rho
+       & ,cg_levelmin,cic_levelmax
   namelist/lightcone_params/thetay_cone,thetaz_cone,zmax_cone
   namelist/movie_params/levelmax_frame,nw_frame,nh_frame,ivar_frame &
-       & ,xcentre_frame,ycentre_frame,zcentre_frame,movie_vars &
+       & ,xcentre_frame,ycentre_frame,zcentre_frame &
        & ,deltax_frame,deltay_frame,deltaz_frame,movie,zoom_only_frame &
        & ,imovout,imov,tstartmov,astartmov,tendmov,aendmov,proj_axis,movie_vars_txt &
        & ,theta_camera,phi_camera,dtheta_camera,dphi_camera,focal_camera,dist_camera,ddist_camera &
        & ,perspective_camera,smooth_frame,shader_frame,tstart_theta_camera,tstart_phi_camera &
-       & ,tend_theta_camera,tend_phi_camera,method_frame,varmin_frame,varmax_frame
+       & ,tend_theta_camera,tend_phi_camera,method_frame,varmin_frame,varmax_frame &
+       & ,center_on_particles,center_on_particles_file,do_particle_snapshot,particle_snapshot_file
 #ifdef DICE
   namelist/dice_params/ ic_file,ic_nfile,ic_format,IG_rho,IG_T2,IG_metal &
        & ,ic_head_name,ic_pos_name,ic_vel_name,ic_id_name,ic_mass_name &
@@ -65,9 +67,11 @@ subroutine read_params
        & ,ic_mag_scale_R,ic_mag_scale_H,ic_mag_scale_B,cosmo_add_gas_index,ic_skip_type &
        & ,ic_mask_ivar,ic_mask_min,ic_mask_max,ic_mask_ptype,analytic_gas_profile
 #endif
-  namelist/tracer_params/ MC_tracer,tracer,tracer_feed,tracer_feed_fmt,tracer_mass, &
-       tracer_first_balance_part_per_cell,tracer_first_balance_levelmin,tracer_per_cell, &
-       tracer_level,no_init_gas_tracer,tracer_to_jet
+  namelist/tracer_params/MC_tracer,tracer_feed,tracer_feed_fmt &
+       & ,tracer_mass,tracer_first_balance_part_per_cell &
+       & ,tracer_first_balance_levelmin, tracer_ivar_refine, tracer_var_cut_refine
+  namelist/yield_params/metal_list,AGByieldfile,SNIIyieldfile &
+       & ,OByieldfile,SNIayieldfile
   ! MPI initialization
 #ifndef WITHOUTMPI
 #ifdef _OPENMP
@@ -109,6 +113,8 @@ subroutine read_params
   write(*,*)'                        Version 3.0                            '
   write(*,*)'       written by Romain Teyssier (University of Zurich)       '
   write(*,*)'               (c) CEA 1999-2007, UZH 2008-2014                '
+  write(*,*)' '
+  write(*,*)'                This is the kebabrulle edition                 '
   write(*,*)' '
 #ifdef _OPENMP
   write(*,'(" Working with nproc = ",I4," and nthr = ",I3," for ndim = ",I1)')ncpu,nthr,ndim
@@ -214,6 +220,9 @@ subroutine read_params
   rewind(1)
   read(1,NML=poisson_params,END=81)
 81 continue
+  rewind(1)
+  read(1,NML=yield_params,END=80)
+80 continue
 #ifdef DICE
   rewind(1)
   read(1,NML=dice_params,END=106)
@@ -227,24 +236,7 @@ subroutine read_params
      CALL GET_COMMAND_ARGUMENT(2,cmdarg)
      read(cmdarg,*) nrestart
   endif
-  
-  ! check for the most recent nout and restart from it. 
-  if (myid==1 .and. nrestart == -1) then
-     do while(nrestart == -1)
-        call title(nrestart_seek,nchar)
-        info_file='output_'//TRIM(nchar)//'/info_'//TRIM(nchar)//'.txt'
-        INQUIRE(FILE=info_file, EXIST=restart_file_ok)
-        if (restart_file_ok) then
-           nrestart = nrestart_seek
-        else
-           nrestart_seek = nrestart_seek - 1
-        endif
-        if(nrestart_seek <= 0) then
-           nrestart = 0
-        end if
-     enddo
-  endif
-    
+
   if (myid==1 .and. nrestart .gt. 0) then
      call title(nrestart,nchar)
      info_file='output_'//TRIM(nchar)//'/info_'//TRIM(nchar)//'.txt'
@@ -312,11 +304,6 @@ subroutine read_params
   levelmin=MAX(levelmin,1)
   nlevelmax=levelmax
   nlevelmax_current=levelmin
-  if(levelhold>0)then
-     nlevelsheld=nlevelmax-levelhold
-     if(myid==1)write(*,*)'Using an effictive maximum level of',levelhold
-  endif
-
 
   nml_ok=.true.
   if(levelmin<1)then
@@ -329,11 +316,6 @@ subroutine read_params
      if(myid==1)write(*,*)'levelmax should not be lower than levelmin'
      nml_ok=.false.
   end if
-  if(levelhold> nlevelmax)then
-     if(myid==1)write(*,*)'Error in the namelist:'
-     if(myid==1)write(*,*)'levelhold has to be lower than levelmax'
-     nml_ok=.false.
-  endif
 
   if(ngridmax==0)then
      if(ngridtot==0)then
@@ -416,6 +398,49 @@ subroutine read_params
      write(*,*)'You have activate the MC tracer PIC is false.'
      call clean_stop
   end if
+
+    if(SFdiagnostics)then
+     if(myid==1)write(*,*) "SF diagnostics active"
+     ! Create directory for log files.
+     logdir = 'SF_log/'
+     call create_output_dirs(logdir)
+
+     ! Create and open log files.
+     write(filename,'("SF_", I5.5, ".dat")') myid
+     filename=trim(logdir)//trim(filename)
+     SFunit_out=5000
+     if(myid==1) write(*,*) "SF log keeps one file per CPU with unit 5000."
+     inquire(file=filename, exist=log_exist)
+     if(log_exist)then
+        open(unit=SFunit_out,file=filename,status="old",position="append",action="write")
+     else
+        open(unit=SFunit_out,file=filename,status="new",action="write")
+        write(SFunit_out,*)"# 'nstep'   'index'   'ilevel'  'rho [H/cc]'   'x [kpc]'   'y [kpc]'   'z [kpc]'   'mstar [Msun]'   'tform [s]'    'aexp'"
+     endif
+  endif
+
+  !-----------------
+  ! Supernova diagnostics
+  !-----------------
+  if(SNdiagnostics)then
+     if(myid==1)write(*,*) "SN diagnostics active"
+     ! Create directory for log files.
+     logdir = 'SN_log/'
+     call create_output_dirs(logdir)
+
+     ! Create and open log files.
+     write(filename,'("SN_", I5.5, ".dat")') myid
+     filename=trim(logdir)//trim(filename)
+     SNunit_out=5001
+     if(myid==1) write(*,*) "SN log keeps one file per CPU with unit 5001."
+     inquire(file=filename, exist=log_exist)
+     if(log_exist)then
+        open(unit=SNunit_out,file=filename,status="old",position="append",action="write")
+     else
+        open(unit=SNunit_out,file=filename,status="new",action="write")
+        write(SNunit_out,*)"# 'nstep'   'type'   'index'   'ilevel'   'numSN'   't [Myr]'   'aexp'   'age [Myr]'   'momST'   'rho [H/cc]'   'mstar [Msun]'   'Zgas'   'mp [Msun]'   'x [kpc]'   'y [kpc]'   'z [kpc]'"
+     endif
+  endif
 
   !-----------------------------------
   ! Rearrange level dependent arrays

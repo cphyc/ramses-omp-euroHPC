@@ -2,31 +2,60 @@
 # If you have problems with this makefile, contact Romain.Teyssier@gmail.com
 #############################################################################
 # Compilation time parameters
-NVECTOR = 128
+
+# Do we want a debug build? 1=Yes, 0=No
+DEBUG = 0
+# Size of vector cache
+# EDGE1 Default on Leicester was 1024. Adapt to new machine if need be
+NVECTOR = 32 #4096
+# Number of dimensions
 NDIM = 3
+# Float precision size
 NPRE = 8
-NENER = 0
-NGROUPS = 0
-NIONS = 0
-METALS = 1
-NCHEM = 9
-NDUST = 4
-#Extra variables beyond those required by dimensions, or listed above
-NVAR_EXTRA = 1
+# hydro/mhd solver
 SOLVER = hydro
-#############################################################################
-# Options
-GRACKLE = 0
+# Patch
+PATCH =
+# Use RT? 1=Yes, 0=No
+# Always run with non-equilibrium and RT cooling module,
+# even if photo-ionization feedback is turned off
 RT = 0
-DICE = 0
-REFMASK = 1
-LONGINT = 0
-QUADHILBERT = 1
-# Set to 1 to use old MPI include statements instead of more recent `use mpi`.
-USE_OLD_MPI_INCLUDE = 0
+# Use MPI? 1=Yes, 0=No
+MPI = 1
+MPIF90 = mpif90
+# Root name of executable
 EXEC = ramses
+# Number of additional energies
+# Additional non-thermal IR pressure coming from RT setup
+NENER = 0
+# Use Grackle cooling? 1=Yes, 0=No
+GRACKLE = 0
+# Number of metal species. metal_list=6,7,8,12,13,14,25,26,63 plus 1 for total Z
+NMETALS = 10
+# ATON flages: Uncomment to enable ATON
+ATON_FLAGS = #-DATON
+# Number of ions for RT
+# Default NIONS=4 tracks HI, HII (NION=1), HeI, HeII, HeIII (NION+2)
+# and H2 (NION+1)
+NIONS = 0
+# Number of photon groups for RT
+# EDGE1 RT setup has 6 photon groups, Table 1 in Agertz+2020
+NGROUPS = 0
+# Number of passive scalars
+# No additional passive scalars beyond metals. Get ride of placeholder
+# passive scalar that was there in EDGE1 setup
+NPSCAL = 0
 # Activate OpenMP
 OPENMP = 1
+# Set to 1 to use old MPI include statements instead of more recent `use mpi`.
+USE_OLD_MPI_INCLUDE = 0
+#############################################################################
+# Options
+DICE = 0
+REFMASK = 1
+LONGINT = 1
+QUADHILBERT = 1
+
 #############################################################################
 # Patches to include (without DICE)
 #PATCH = ../patch/AGNSFSNpatch/AGNspinRT:../patch/AGNSFSNpatch/sfsn
@@ -34,7 +63,15 @@ OPENMP = 1
 #PATCH = ../patch/debug
 #############################################################################
 # Compute the right value for NVAR
-NVAR := $(shell echo $$(($(NDIM) + 2 + $(NVAR_EXTRA) + $(NIONS) + $(NENER) + $(REFMASK)+ $(METALS) + $(NCHEM) + $(NDUST) )) )
+# Compute NVAR
+NVAR = 2+$(NDIM)
+ifeq ($(SOLVER),mhd)
+   NVAR = 8
+endif
+NVAR := $(NVAR)+$(NENER)+$(NPSCAL)+$(NMETALS)
+ifeq ($(RT),1)
+   NVAR := $(NVAR)+$(NIONS)
+endif
 #############################################################################
 GITBRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 GITHASH = $(shell git log --pretty=format:'%H' -n 1)
@@ -42,7 +79,7 @@ GITREMOTE = $(shell git config --get branch.$(GITBRANCH).remote)
 GITREPO = $(shell git config --get remote.$(GITREMOTE).url)
 BUILDDATE = $(shell date +"%D-%T")
 DEFINES = -DNVECTOR=$(NVECTOR) -DNDIM=$(NDIM) -DNPRE=$(NPRE) -DNENER=$(NENER) -DNVAR=$(NVAR) \
-          -DSOLVER$(SOLVER) -DNCHEM=$(NCHEM) -DNDUST=$(NDUST)
+          -DSOLVER$(SOLVER) -DOUTPUT_PARTICLE_POTENTIAL
 ifeq ($(USE_OLD_MPI_INCLUDE),1)
 DEFINES += -DMPI_OLD
 endif
@@ -117,8 +154,8 @@ PATCH := $(subst $(SPACE),:,$(PATCH))
 #FFLAGS = -cpp $(DEFINES) -DWITHOUTMPI
 
 # --- MPI, gfortran syntax ------------------------------
-#F90 = mpif90 -frecord-marker=4 -O3 -ffree-line-length-none -g -fbacktrace $(OMPFLAG)
-#FFLAGS = -x f95-cpp-input $(DEFINES)
+F90 = mpif90 -frecord-marker=4 -O2 -ffree-line-length-none -g -fbacktrace $(OMPFLAG)
+FFLAGS = -x f95-cpp-input $(DEFINES)
 
 # --- MPI, gfortran DEBUG syntax ------------------------------
 #F90 = mpif90 -frecord-marker=4 -ffree-line-length-none -fbacktrace -g -O0 -fbounds-check -Wuninitialized -Wall $(OMPFLAG)
@@ -129,16 +166,16 @@ PATCH := $(subst $(SPACE),:,$(PATCH))
 #FFLAGS = -Mpreprocess $(DEFINES)
 
 # --- MPI, ifort syntax ------------------------------
-#F90 = mpiifort $(OMPFLAG)
-#FFLAGS = -cpp -O3 -fpp -xAVX $(DEFINES) -DNOSYSTEM
+# F90 = mpiifx -Wl,-z,noexecstack $(OMPFLAG)
+# FFLAGS = -cpp -fPIC -fma -O2 -g -traceback $(DEFINES) -DNOSYSTEM
 
 # --- MPI, ifort syntax, additional checks -----------
-#F90 = mpiifort $(OMPFLAG)
-#FFLAGS = -warn all -O0 -g -traceback -fpe0 -ftrapuv -check bounds -cpp $(DEFINES) -DNOSYSTEM
+# F90 = mpiifx $(OMPFLAG)
+# FFLAGS = -warn all -O2 -g -traceback -fpe0 -ftrapuv -check bounds -cpp $(DEFINES) -DNOSYSTEM
 
 # --- MPI, ifort syntax for Xeon phi ------------------------------
-F90 = mpiifort -Wl,-z,noexecstack $(OMPFLAG)
-FFLAGS = -cpp $(DEFINES) -O3 -fPIC -free -xMIC-AVX512 -fma -align array64byte -finline-functions -DNOSYSTEM
+# F90 = mpiifort -Wl,-z,noexecstack $(OMPFLAG)
+# FFLAGS = -cpp $(DEFINES) -O3 -fPIC -free -xMIC-AVX512 -fma -align array64byte -finline-functions -DNOSYSTEM
 
 # --- MPI, ifort DEBUG syntax for Xeon phi ------------------------------
 #F90 = mpiifort -Wl,-z,noexecstack $(OMPFLAG) 
@@ -185,7 +222,8 @@ endif
 VPATH := $(VPATH):../$(SOLVER):../aton:../hydro:../pm:../poisson:../amr:../io:../amr/geometry
 #############################################################################
 # All objects
-MODOBJ = mpi_mod.o amr_parameters.o amr_commons.o random.o pm_parameters.o pm_commons.o poisson_parameters.o dump_utils.o
+MODOBJ = mpi_mod.o amr_parameters.o amr_commons.o  dictionary.o random.o pm_parameters.o \
+         pm_commons.o poisson_parameters.o dump_utils.o constants.o
 ifeq ($(GRACKLE),1)
 MODOBJ += grackle_parameters.o
 endif
@@ -202,17 +240,16 @@ AMROBJ =
 endif
 AMROBJ += read_params.o init_amr.o init_time.o init_refine.o \
 	tracer_utils.o adaptive_loop.o utils.o geom_types.o geom_utils.o \
-        geom_distances.o geom_volumes.o sink_particle_tracer.o amr_step.o update_time.o \
+        geom_distances.o geom_volumes.o amr_step.o update_time.o \
          output_amr.o flag_utils.o physical_boundaries.o virtual_boundaries.o refine_utils.o nbors_utils.o \
-         hilbert.o load_balance.o title.o sort.o cooling_fine.o units.o light_cone.o movie.o
+         hilbert.o load_balance.o title.o sort.o cooling_fine.o units.o light_cone.o particle_snapshot.o  movie.o end.o
 # Particle-Mesh objects
 PMOBJ = init_part.o output_part.o rho_fine.o synchro_fine.o           \
         move_fine.o newdt_fine.o particle_tree.o add_list.o           \
-        remove_list.o star_formation.o          \
+        remove_list.o star_formation.o metal_yields.o                 \
         sink_particle.o feedback.o clump_finder.o clump_merger.o      \
         flag_formation_sites.o init_sink.o output_sink.o              \
-        mechanical_commons.o mechanical_fine.o stellar_winds_fine.o   \
-        mechanical_fine_snIa.o
+        unbinding.o merger_tree.o init_tracer.o
 # Poisson solver objects
 POISSONOBJ = init_poisson.o phi_fine_cg.o interpol_phi.o force_fine.o multigrid_coarse.o multigrid_fine_commons.o \
              multigrid_fine_fine.o multigrid_fine_coarse.o gravana.o boundary_potential.o rho_ana.o output_poisson.o
@@ -259,6 +296,9 @@ write_makefile.o: FORCE
 write_patch.o: FORCE
 	 ../utils/scripts/cr_write_patch.sh $(PATCH)
 	 $(F90) $(FFLAGS) -c write_patch.f90 -o $@
+
+init_hydro.o: init_hydro.f90
+	$(F90) $(FFLAGS) -c $^ -o $@ $(LIBS_OBJ) -O0
 %.o:%.F
 	$(F90) $(FFLAGS) -c $^ -o $@ $(LIBS_OBJ)
 %.o:%.f90
